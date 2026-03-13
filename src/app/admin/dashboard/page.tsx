@@ -181,6 +181,7 @@ export default function Dashboard() {
   const [showOrderActionModal, setShowOrderActionModal] = useState(false);
   const [orderAction, setOrderAction] = useState<'approve' | 'reject' | 'delete' | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
   
   // Inline editing state
   const [editingOrder, setEditingOrder] = useState<string | null>(null);
@@ -411,9 +412,17 @@ return true;
       setSelectedOffice(null);
     };
 
+    const handleNavigateToReservations = () => {
+      console.log('🔄 Navigate to reservations event received - switching to reservations tab');
+      setActiveTab('reservations');
+      setSelectedWilaya(null);
+      setSelectedOffice(null);
+    };
+
     // Add event listeners with capture to ensure they catch events from portals
     window.addEventListener('navigateToNotifications', handleNavigateToNotifications, true);
     window.addEventListener('navigateToOrders', handleNavigateToOrders, true);
+    window.addEventListener('navigateToReservations', handleNavigateToReservations, true);
     
     // Also add functions to window object for direct access
     (window as any).navigateToAdminOrders = () => {
@@ -422,13 +431,28 @@ return true;
       setSelectedWilaya(null);
       setSelectedOffice(null);
     };
+
+    (window as any).navigateToAdminReservations = () => {
+      console.log('🔄 Direct navigateToAdminReservations called');
+      setActiveTab('reservations');
+      setSelectedWilaya(null);
+      setSelectedOffice(null);
+    };
+    
+    // Debug: Log that functions are attached
+    console.log('🔧 Navigation functions attached to window:', {
+      navigateToAdminOrders: !!(window as any).navigateToAdminOrders,
+      navigateToAdminReservations: !!(window as any).navigateToAdminReservations
+    });
     
     return () => {
       window.removeEventListener('navigateToNotifications', handleNavigateToNotifications, true);
       window.removeEventListener('navigateToOrders', handleNavigateToOrders, true);
+      window.removeEventListener('navigateToReservations', handleNavigateToReservations, true);
       delete (window as any).navigateToAdminOrders;
+      delete (window as any).navigateToAdminReservations;
     };
-  }, [setSelectedWilaya, setSelectedOffice]);
+  }, [setSelectedWilaya, setSelectedOffice, setActiveTab]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -564,6 +588,12 @@ return true;
         // 5. Fetch orders
     await fetchOrders();
     
+        // Add delay before next call
+        await delay(500);
+        
+        // 6. Fetch admin settings
+    await fetchAdminSettings();
+    
     
       } catch (error) {
         console.error('🔴 Error fetching initial data:', error);
@@ -581,6 +611,18 @@ return true;
       fetchUsers();
     }
   }, [activeTab]);
+
+  // Auto-approve pending orders when auto-accept is enabled or orders change
+  useEffect(() => {
+    if (autoAcceptOrders && orders.length > 0) {
+      // Add a small delay to avoid immediate execution on orders fetch
+      const timer = setTimeout(() => {
+        autoApprovePendingOrders();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [autoAcceptOrders, orders]);
 
   // Save active tab to localStorage whenever it changes
   useEffect(() => {
@@ -822,6 +864,91 @@ setOrders(orders);
     } catch (error) {
       console.error('🔴 Failed to fetch orders:', error);
       setOrderError('Failed to fetch orders');
+    }
+  };
+
+  // Auto-approve pending orders when auto-accept is enabled
+  const autoApprovePendingOrders = async () => {
+    if (!autoAcceptOrders) return;
+    
+    const pendingOrders = orders.filter(order => order.status === 'pending');
+    if (pendingOrders.length === 0) return;
+    
+    console.log(`🤖 Auto-approving ${pendingOrders.length} pending orders`);
+    
+    for (const order of pendingOrders) {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`https://dmtart.pro/mimorent/api/admin/orders-reservation/${order._id}/approve`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          console.log(`✅ Auto-approved order: ${order._id}`);
+        } else {
+          console.error(`❌ Failed to auto-approve order ${order._id}:`, data.message);
+        }
+      } catch (error) {
+        console.error(`❌ Error auto-approving order ${order._id}:`, error);
+      }
+    }
+    
+    // Refresh orders after auto-approving
+    await fetchOrders();
+  };
+
+  // Load admin settings from backend
+  const fetchAdminSettings = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('https://dmtart.pro/mimorent/api/admin/settings', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setAutoAcceptOrders(data.data.autoAcceptOrders);
+        console.log('📋 Loaded admin settings:', data.data.autoAcceptOrders);
+      } else {
+        console.error('🔴 Failed to load admin settings:', data.message);
+      }
+    } catch (error) {
+      console.error('🔴 Error loading admin settings:', error);
+    }
+  };
+
+  // Save auto-accept setting to backend
+  const saveAutoAcceptSetting = async (value: boolean) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('https://dmtart.pro/mimorent/api/admin/settings/auto-accept', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ autoAcceptOrders: value })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        console.log('💾 Saved auto-accept setting:', value);
+      } else {
+        console.error('🔴 Failed to save auto-accept setting:', data.message);
+        // Revert the state if save failed
+        setAutoAcceptOrders(!value);
+      }
+    } catch (error) {
+      console.error('🔴 Error saving auto-accept setting:', error);
+      // Revert the state if save failed
+      setAutoAcceptOrders(!value);
     }
   };
 
@@ -6545,7 +6672,78 @@ setShowContractModal(true);
     <>
       <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">طلبات الحجز</h2>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold text-white">طلبات الحجز</h2>
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-3">
+                <span className="text-sm font-medium text-white/80">قبول تلقائي:</span>
+                <label className="relative cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoAcceptOrders}
+                    onChange={(e) => {
+                      const newValue = e.target.checked;
+                      setAutoAcceptOrders(newValue);
+                      saveAutoAcceptSetting(newValue);
+                    }}
+                    className="sr-only"
+                  />
+                  <div className="relative w-20 h-10 bg-gradient-to-br from-gray-800 to-gray-900 rounded-full transition-all duration-500 shadow-lg overflow-hidden">
+                    {/* Cosmos background */}
+                    <div className="absolute inset-0 opacity-10 transition-opacity duration-500">
+                      <div className="absolute inset-0 bg-white" style={{
+                        background: 'radial-gradient(1px 1px at 10% 10%, #fff 100%, transparent), radial-gradient(1px 1px at 20% 20%, #fff 100%, transparent), radial-gradient(2px 2px at 30% 30%, #fff 100%, transparent), radial-gradient(1px 1px at 40% 40%, #fff 100%, transparent), radial-gradient(2px 2px at 50% 50%, #fff 100%, transparent), radial-gradient(1px 1px at 60% 60%, #fff 100%, transparent), radial-gradient(2px 2px at 70% 70%, #fff 100%, transparent), radial-gradient(1px 1px at 80% 80%, #fff 100%, transparent), radial-gradient(1px 1px at 90% 90%, #fff 100%, transparent)',
+                        backgroundSize: '200% 200%'
+                      }}></div>
+                    </div>
+                    
+                    {/* Energy lines */}
+                    <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${autoAcceptOrders ? 'opacity-100' : 'opacity-0'}`}
+                         style={{ top: '20%', transform: 'rotate(15deg)' }}></div>
+                    <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${autoAcceptOrders ? 'opacity-100' : 'opacity-0'}`}
+                         style={{ top: '50%', transform: 'rotate(0deg)' }}></div>
+                    <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${autoAcceptOrders ? 'opacity-100' : 'opacity-0'}`}
+                         style={{ top: '80%', transform: 'rotate(-15deg)' }}></div>
+                    
+                    {/* Toggle orb */}
+                    <div className={`absolute h-8 w-8 top-1 left-1 bg-gradient-to-br from-rose-500 to-teal-500 rounded-full transition-all duration-600 ease-out transform ${autoAcceptOrders ? 'translate-x-10 rotate-360' : 'translate-x-0'} shadow-xl`}>
+                      <div className="absolute inset-1 bg-gradient-to-br from-white to-gray-200 rounded-full transition-all duration-500 overflow-hidden">
+                        <div className="absolute inset-0 opacity-10" style={{
+                          background: 'repeating-conic-gradient(from 0deg, transparent 0deg, rgba(0, 0, 0, 0.1) 10deg, transparent 20deg)',
+                          animation: autoAcceptOrders ? 'patternRotate 10s linear infinite' : 'none'
+                        }}></div>
+                      </div>
+                      <div className={`absolute inset-0 border border-white/10 rounded-full transition-all duration-500 ${autoAcceptOrders ? 'border-emerald-400/30' : ''}`}
+                           style={{ animation: autoAcceptOrders ? 'ringPulse 2s infinite' : 'none' }}></div>
+                    </div>
+                    
+                    {/* Particles */}
+                    {autoAcceptOrders && (
+                      <div className="absolute w-full h-full">
+                        <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '20%', animationDelay: '0s' }}></div>
+                        <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '40%', animationDelay: '0.2s' }}></div>
+                        <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '60%', animationDelay: '0.4s' }}></div>
+                        <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '80%', animationDelay: '0.6s' }}></div>
+                      </div>
+                    )}
+                  </div>
+                </label>
+                <span className={`text-sm mx-2 font-semibold transition-colors duration-300 ${
+                  autoAcceptOrders 
+                    ? 'text-emerald-400 drop-shadow-sm' 
+                    : 'text-gray-400'
+                }`}>
+                  {autoAcceptOrders ? 'مفعل' : 'معطل'}
+                </span>
+              </div>
+              {autoAcceptOrders && (
+                <div className="flex items-center space-x-1 text-emerald-400">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-emerald-400/80">يعمل تلقائياً</span>
+                </div>
+              )}
+            </div>
+          </div>
           <button
 onClick={fetchOrders}
               className="px-2 cursor-pointer py-1.5 sm:px-3 sm:py-2 bg-green-600/20 text-white rounded-lg hover:bg-green-600/30 transition-all text-sm sm:font-medium flex items-center gap-1 sm:gap-2 border-white/60 border-2"

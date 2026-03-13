@@ -250,8 +250,8 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
     }
   };
 
-  // Handle notification click - mark as seen
-  const handleNotificationClick = async (notificationId: string) => {
+  // Handle notification click - mark as seen and navigate
+  const handleNotificationClick = async (notificationId: string, notification: Notification) => {
     try {
       const token = localStorage.getItem('token');
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -311,6 +311,79 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
           )
         );
       }
+
+      // Navigate based on notification type
+      console.log('🚀 Navigating based on notification type:', notification.type);
+      
+      // Close dropdown first
+      setIsAnimating(true);
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsAnimating(false);
+        
+        // Helper function to retry calling window functions
+        const retryWindowFunction = (functionName: string, maxRetries = 3, delay = 100) => {
+          return new Promise((resolve, reject) => {
+            let attempts = 0;
+            
+            const tryCall = () => {
+              attempts++;
+              console.log(`🔄 Attempt ${attempts} to call ${functionName}`);
+              
+              if ((window as any)[functionName]) {
+                console.log(`✅ Found ${functionName}, calling it`);
+                (window as any)[functionName]();
+                resolve(true);
+              } else if (attempts < maxRetries) {
+                console.log(`⏳ ${functionName} not found, retrying in ${delay}ms...`);
+                setTimeout(tryCall, delay);
+              } else {
+                console.log(`❌ ${functionName} not found after ${maxRetries} attempts`);
+                reject(new Error(`${functionName} not available`));
+              }
+            };
+            
+            tryCall();
+          });
+        };
+        
+        // Navigate based on type
+        switch (notification.type) {
+          case 'reminder':
+            console.log('🔄 Navigating to notifications tab for reminder');
+            const reminderEvent = new CustomEvent('navigateToNotifications', { bubbles: true });
+            window.dispatchEvent(reminderEvent);
+            break;
+            
+          case 'reservation':
+            console.log('🔄 Navigating to reservations tab for reservation');
+            retryWindowFunction('navigateToAdminReservations')
+              .catch(() => {
+                console.log('❌ navigateToAdminReservations failed, trying custom event');
+                const reservationEvent = new CustomEvent('navigateToReservations', { bubbles: true });
+                window.dispatchEvent(reservationEvent);
+              });
+            break;
+            
+          case 'order':
+            console.log('🔄 Navigating to orders tab for order');
+            retryWindowFunction('navigateToAdminOrders')
+              .catch(() => {
+                console.log('❌ navigateToAdminOrders failed, trying custom event');
+                const orderEvent = new CustomEvent('navigateToOrders', { bubbles: true });
+                window.dispatchEvent(orderEvent);
+              });
+            break;
+            
+          default:
+            console.log('🔄 No specific navigation for type:', notification.type);
+            // For other types, default to notifications view
+            const defaultEvent = new CustomEvent('navigateToNotifications', { bubbles: true });
+            window.dispatchEvent(defaultEvent);
+            break;
+        }
+      }, 150);
+      
     } catch (error) {
       console.error('Error handling notification click:', error);
     }
@@ -555,7 +628,7 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation(); // Prevent dropdown from closing
-                      handleNotificationClick(notification._id);
+                      handleNotificationClick(notification._id, notification);
                     }}
                   >
                     <div className="flex items-start justify-between">
