@@ -467,8 +467,8 @@ return true;
   ];
 
   const menuItems = [
-    { id: 'wilayas', label: t('admin.wilayas'), icon: Building, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
-    { id: 'offices', label: t('admin.offices'), icon: Building, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
+    { id: 'wilayas', label: 'الولايات', icon: Building, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
+    { id: 'offices', label: 'المكاتب', icon: Building, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
     { id: 'users', label: 'المستخدمون', icon: Users },
     { id: 'properties', label: 'العقارات', icon: Home, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
     { id: 'reservations', label: 'الحجوزات', icon: Calendar, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
