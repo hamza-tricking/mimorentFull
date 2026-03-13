@@ -1,0 +1,46 @@
+{
+  "navbar": {
+    "home": "Home",
+    "about": "About",
+    "service": "Service",
+    "price": "Price",
+    "promo": "Promo",
+    "login": "Login",
+    "menu": "Menu",
+    "language": "Language"
+  },
+  "hero": {
+    "title": "Find Your Perfect Rental Space",
+    "subtitle": "Discover modern living spaces designed for comfort and style",
+    "phoneNumber": "Phone Number",
+    "contactUs": "Contact Us"
+  },
+  "gallery": {
+    "title": "Discover Our Spaces",
+    "subtitle": "Explore our curated collection of modern living spaces, each designed with attention to detail and style",
+    "modernDesign": "Modern Design",
+    "modernDescription": "Contemporary living spaces with clean lines and minimalist aesthetics",
+    "luxuryLiving": "Luxury Living",
+    "luxuryDescription": "Premium spaces with high-end finishes and sophisticated design",
+    "minimalistLiving": "Minimalist Living",
+    "minimalistDescription": "Clean, uncluttered spaces that promote tranquility and style"
+  },
+  "about": {
+    "title": "About MIMO RENT",
+    "subtitle": "Your trusted partner for premium rental spaces",
+    "description": "We specialize in providing high-quality rental properties that combine comfort, style, and functionality. Our carefully curated spaces are designed to meet the diverse needs of modern residents.",
+    "features": {
+      "quality": "Quality Properties",
+      "qualityDesc": "Each property is carefully selected and maintained to the highest standards.",
+      "service": "Excellent Service",
+      "serviceDesc": "Our dedicated team is committed to providing exceptional customer service.",
+      "location": "Prime Locations",
+      "locationDesc": "Strategically located properties in desirable neighborhoods."
+    }
+  },
+  "footer": {
+    "rights": "All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service"
+  }
+}

@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { LanguageProvider } from '../contexts/LanguageContext';
+import { LoadingProvider } from '../contexts/LoadingContext';
+import { ToastProvider } from '../contexts/ToastContext';
+import LayoutContent from '../components/LayoutContent';
+import LoadingController from '../components/LoadingController';
+import Navbar from "@/components/Navbar";
+import ToastContainer from "@/components/ToastContainer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -8,7 +15,7 @@ const geistSans = Geist({
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
@@ -25,9 +32,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
       >
-        {children}
+        <ToastProvider>
+          <LoadingProvider>
+            <LanguageProvider>
+              <LoadingController />
+              <Navbar/>
+              <LayoutContent>{children}</LayoutContent>
+              <ToastContainer />
+            </LanguageProvider>
+          </LoadingProvider>
+        </ToastProvider>
       </body>
     </html>
   );

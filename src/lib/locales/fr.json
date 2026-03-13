@@ -1,0 +1,46 @@
+{
+  "navbar": {
+    "home": "Accueil",
+    "about": "À propos",
+    "service": "Service",
+    "price": "Prix",
+    "promo": "Promo",
+    "login": "Connexion",
+    "menu": "Menu",
+    "language": "Langue"
+  },
+  "hero": {
+    "title": "Trouvez Votre Espace de Location Parfait",
+    "subtitle": "Découvrez des espaces de vie modernes conçus pour le confort et le style",
+    "phoneNumber": "Numéro de Téléphone",
+    "contactUs": "Contactez-nous"
+  },
+  "gallery": {
+    "title": "Découvrez Nos Espaces",
+    "subtitle": "Explorez notre collection sélectionnée d'espaces de vie modernes, chacun conçu avec attention aux détails et au style",
+    "modernDesign": "Design Moderne",
+    "modernDescription": "Espaces de vie contemporains avec des lignes épurées et une esthétique minimaliste",
+    "luxuryLiving": "Vie de Luxe",
+    "luxuryDescription": "Espaces premium avec des finitions haut de gamme et un design sophistiqué",
+    "minimalistLiving": "Vie Minimaliste",
+    "minimalistDescription": "Espaces propres et épurés qui favorisent la tranquillité et le style"
+  },
+  "about": {
+    "title": "À propos de MIMO RENT",
+    "subtitle": "Votre partenaire de confiance pour les espaces de location premium",
+    "description": "Nous nous spécialisons dans la fourniture de propriétés de location de haute qualité qui combinent confort, style et fonctionnalité. Nos espaces soigneusement sélectionnés sont conçus pour répondre aux besoins diverses des résidents modernes.",
+    "features": {
+      "quality": "Propriétés de Qualité",
+      "qualityDesc": "Chaque propriété est soigneusement sélectionnée et entretenue selon les normes les plus élevées.",
+      "service": "Service Excellent",
+      "serviceDesc": "Notre équipe dédiée s'engage à fournir un service client exceptionnel.",
+      "location": "Emplacements de Choix",
+      "locationDesc": "Propriétés stratégiquement situées dans des quartiers recherchés."
+    }
+  },
+  "footer": {
+    "rights": "Tous droits réservés.",
+    "privacy": "Politique de Confidentialité",
+    "terms": "Conditions d'Utilisation"
+  }
+}

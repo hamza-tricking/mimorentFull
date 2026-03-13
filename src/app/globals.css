@@ -19,8 +19,568 @@
   }
 }
 
+/* Toast animations */
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-in {
+  animation-duration: 300ms;
+  animation-fill-mode: both;
+}
+
+.slide-in-from-right {
+  animation-name: slide-in-from-right;
+}
+
+/* Float animation for About Us section */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+/* Hero animations */
+@keyframes moveHorizontal {
+  0%, 100% { transform: translateX(0px); }
+  50% { transform: translateX(30px); }
+}
+
+@keyframes moveVertical {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-25px); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Page transition animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Modal animations */
+@keyframes modalFadeIn {
+  from { 
+    opacity: 0; 
+    transform: scale(0.9) translateY(-20px);
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalFadeOut {
+  from { 
+    opacity: 1; 
+    transform: scale(1) translateY(0);
+  }
+  to { 
+    opacity: 0; 
+    transform: scale(0.9) translateY(-20px);
+  }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(30px);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0);
+  }
+}
+
+/* Modal backdrop animation */
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes backdropFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Modal classes */
+.modal-backdrop {
+  animation: backdropFadeIn 0.3s ease-out;
+}
+
+.modal-backdrop.closing {
+  animation: backdropFadeOut 0.3s ease-out;
+}
+
+.modal-content {
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+.modal-content.closing {
+  animation: modalFadeOut 0.3s ease-out;
+}
+
+/* Smooth transitions for all interactive elements */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Prevent layout shift during modal transitions */
+.modal-open {
+  overflow: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  touch-action: manipulation;
+  user-select: text;
+  -webkit-touch-callout: none;
+  -webkit-user-select: text;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+img, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Prevent horizontal scroll in all elements */
+.overflow-x-hidden {
+  overflow-x: hidden !important;
+}
+
+/* Fix for modals and large content */
+.modal-content {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* RTL Support */
+[dir="rtl"] {
+  direction: rtl;
+}
+
+[dir="rtl"] .flex {
+  flex-direction: row-reverse !important;
+}
+
+[dir="rtl"] .flex-col {
+  flex-direction: column !important;
+}
+
+[dir="rtl"] .flex-row {
+  flex-direction: row-reverse !important;
+}
+
+[dir="rtl"] .flex-row-reverse {
+  flex-direction: row !important;
+}
+
+/* Animated Auth Buttons */
+.auth-button {
+  scale: 0.8;
+  outline: none;
+  cursor: pointer;
+  border: none;
+  padding: 0.9rem 2rem;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  position: relative;
+  display: inline-block;
+  letter-spacing: 0.05rem;
+  font-weight: 700;
+  font-size: 17px;
+  border-radius: 500px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.auth-button span {
+  position: relative;
+  z-index: 10;
+  transition: color 0.4s;
+}
+
+.auth-button::before,
+.auth-button::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.auth-button::before {
+  content: "";
+  width: 120%;
+  left: -10%;
+  transform: skew(30deg);
+  transition: transform 0.4s cubic-bezier(0.3, 1, 0.8, 1);
+}
+
+/* Primary button (blue theme) */
+.auth-button-primary {
+  background: #24697F;
+  color: ghostwhite;
+}
+
+.auth-button-primary span {
+  color: ghostwhite;
+}
+
+.auth-button-primary:hover span {
+  color: white;
+}
+
+.auth-button-primary::before {
+  background: #0f2837;
+}
+
+.auth-button-primary:hover::before {
+  transform: translate3d(100%, 0, 0);
+}
+
+/* Green button (admin theme) */
+.auth-button-green {
+  background: #10b981;
+  color: ghostwhite;
+}
+
+.auth-button-green span {
+  color: ghostwhite;
+}
+
+.auth-button-green:hover span {
+  color: white;
+}
+
+.auth-button-green::before {
+  background: #047857;
+}
+
+.auth-button-green:hover::before {
+  transform: translate3d(100%, 0, 0);
+}
+
+/* Mobile auth button adjustments */
+@media (max-width: 768px) {
+  .auth-button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Scale in animation for language selector */
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+/* Custom animations for decorative shapes */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0px) rotate(12deg); }
+  50% { transform: translateY(-10px) rotate(12deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+
+/* Font support for Arabic */
+.font-arabic {
+  font-family: 'Noto Sans Arabic', 'Arial', sans-serif;
+}
+
+/* Loading screen animations */
+@keyframes flipCoin {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(180deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
+}
+
+@keyframes progress {
+  0% {
+    width: 0%;
+  }
+  50% {
+    width: 70%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-progress {
+  animation: progress 2s ease-in-out infinite;
+}
+
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+
+[dir="rtl"] .text-right {
+  text-align: left;
+}
+
+[dir="rtl"] .ml-4 {
+  margin-left: 0;
+  margin-right: 1rem;
+}
+
+[dir="rtl"] .mr-4 {
+  margin-right: 0;
+  margin-left: 1rem;
+}
+
+[dir="rtl"] .pl-4 {
+  padding-left: 0;
+  padding-right: 1rem;
+}
+
+[dir="rtl"] .pr-4 {
+  padding-right: 0;
+  padding-left: 1rem;
+}
+
+[dir="rtl"] .space-x-8 {
+  margin-right: 0;
+  margin-left: 2rem;
+}
+
+[dir="rtl"] .space-x-4 > * {
+  margin-left: 0;
+  margin-right: 2rem;
+}
+
+[dir="rtl"] .justify-between {
+  justify-content: space-between;
+}
+
+[dir="rtl"] .items-center {
+  text-align: center;
+}
+
+[dir="rtl"] .flex-row {
+  flex-direction: row-reverse !important;
+}
+
+[dir="rtl"] .flex-row-reverse {
+  flex-direction: row !important;
+}
+
+/* Animated Auth Buttons */
+.auth-button {
+  outline: none;
+  cursor: pointer;
+  border: none;
+  padding: 0.9rem 2rem;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  position: relative;
+  display: inline-block;
+  letter-spacing: 0.05rem;
+  font-weight: 700;
+  font-size: 17px;
+  border-radius: 500px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.auth-button span {
+  position: relative;
+  z-index: 10;
+  transition: color 0.4s;
+}
+
+.auth-button::before,
+.auth-button::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.auth-button::before {
+  content: "";
+  width: 120%;
+  left: -10%;
+  transform: skew(30deg);
+  transition: transform 0.4s cubic-bezier(0.3, 1, 0.8, 1);
+}
+
+/* Primary button (blue theme) */
+.auth-button-primary {
+  background: #24697F;
+  color: ghostwhite;
+}
+
+.auth-button-primary span {
+  color: ghostwhite;
+}
+
+.auth-button-primary:hover span {
+  color: white;
+}
+
+.auth-button-primary::before {
+  background: #0f2837;
+}
+
+.auth-button-primary:hover::before {
+  transform: translate3d(100%, 0, 0);
+}
+
+/* Green button (admin theme) */
+.auth-button-green {
+  background: #10b981;
+  color: ghostwhite;
+}
+
+.auth-button-green span {
+  color: ghostwhite;
+}
+
+.auth-button-green:hover span {
+  color: white;
+}
+
+.auth-button-green::before {
+  background: #047857;
+}
+
+.auth-button-green:hover::before {
+  transform: translate3d(100%, 0, 0);
+}
+
+/* Mobile auth button adjustments */
+@media (max-width: 768px) {
+  .auth-button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Scale in animation for language selector */
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+/* Custom animations for decorative shapes */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0px) rotate(12deg); }
+  50% { transform: translateY(-10px) rotate(12deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+
+/* Font support for Arabic */
+.font-arabic {
+  font-family: 'Noto Sans Arabic', 'Arial', sans-serif;
+}
+
+/* Loading screen animations */
+@keyframes flipCoin {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(180deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
+}
+
+@keyframes progress {
+  0% {
+    width: 0%;
+  }
+  50% {
+    width: 70%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-progress {
+  animation: progress 2s ease-in-out infinite;
 }
