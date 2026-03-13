@@ -170,6 +170,7 @@ export default function Dashboard() {
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedHistoryItems, setExpandedHistoryItems] = useState<Set<string>>(new Set());
+  const [expandedPropertyCards, setExpandedPropertyCards] = useState<Set<string>>(new Set());
   
   // Orders state
   const [orders, setOrders] = useState<any[]>([]);
@@ -1130,6 +1131,101 @@ setOrders(orders);
       }
       return newSet;
     });
+  };
+
+  const togglePropertyCard = (propertyId: string) => {
+    setExpandedPropertyCards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(propertyId)) {
+        newSet.delete(propertyId);
+      } else {
+        newSet.add(propertyId);
+      }
+      return newSet;
+    });
+  };
+
+  // Calendar component for current month
+  const PropertyCalendar = ({ propertyId }: { propertyId: string }) => {
+    const currentDate = new Date();
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDate = firstDay.getDay();
+    const daysInMonth = lastDay.getDate();
+    
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 
+                       'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    
+    // Get reservation dates for this property
+    const reservation = reservations.find((r: any) => {
+      const reservationPropertyId = typeof r.propertyId === 'string' 
+        ? r.propertyId 
+        : r.propertyId?._id || r.propertyId.id;
+      return reservationPropertyId === propertyId;
+    });
+    
+    const getReservedDates = () => {
+      if (!reservation) return new Set();
+      const reservedDates = new Set();
+      const start = new Date(reservation.startDate);
+      const end = new Date(reservation.endDate);
+      
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        reservedDates.add(d.toISOString().split('T')[0]);
+      }
+      return reservedDates;
+    };
+    
+    const reservedDates = getReservedDates();
+    
+    return (
+      <div className="bg-white/5 rounded-lg p-2  border border-white/20">
+        <div className="text-center mb-2 sm:mb-3">
+          <h4 className="text-white font-semibold text-sm sm:text-base">{monthNames[month]} {year}</h4>
+        </div>
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-1 text-xs">
+          {dayNames.map(day => (
+            <div key={day} className="text-center text-white/60 font-medium py-0.5 sm:py-1 text-xs sm:text-xs">
+              {day}
+            </div>
+          ))}
+          {Array.from({ length: startDate }, (_, i) => (
+            <div key={`empty-${i}`} className="p-1 sm:p-2"></div>
+          ))}
+          {Array.from({ length: daysInMonth }, (_, i) => {
+            const date = new Date(year, month, i + 1);
+            const dateStr = date.toISOString().split('T')[0];
+            const isReserved = reservedDates.has(dateStr);
+            const isToday = dateStr === new Date().toISOString().split('T')[0];
+            
+            return (
+              <div
+                key={i + 1}
+                className={` text-center rounded text-xs ${
+                  isReserved 
+                    ? 'bg-red-500/30 text-red-300 border border-red-500/50' 
+                    : isToday 
+                      ? 'bg-blue-500/30 text-blue-300 border border-blue-500/50'
+                      : 'bg-white/10 text-white/80 hover:bg-white/20'
+                }`}
+              >
+                {i + 1}
+              </div>
+            );
+          })}
+        </div>
+        {reservation && (
+          <div className="mt-2 sm:mt-3 p-1.5 sm:p-2 bg-red-500/20 rounded border border-red-500/30">
+            <p className="text-xs text-red-300">
+              <span className="font-medium">فترة الحجز:</span> {new Date(reservation.startDate).toLocaleDateString('ar-DZ')} - {new Date(reservation.endDate).toLocaleDateString('ar-DZ')}
+            </p>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const fetchFinancialStats = async () => {
@@ -5180,7 +5276,7 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
       </div>
 
       {/* Properties Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 ">
         {properties
           .filter((property: any) => {
 if (!selectedWilaya) return true;
@@ -5190,7 +5286,7 @@ return property.officeId?._id === selectedOffice ||
        property.officeId?.toString() === selectedOffice;
           })
           .map((property: any) => (
-<div key={property._id} className="bg-white/10 backdrop-blur-md rounded-xl overflow-hidden border border-white/20">
+<div key={property._id} className="bg-white/10 backdrop-blur-md rounded-xl overflow-hidden border-2 border-white/40">
   {/* Property Image */}
   <div className="relative w-full aspect-[4/2] bg-gray-900 overflow-hidden">
     {property.images && property.images.length > 0 ? (
@@ -5249,7 +5345,7 @@ return property.officeId?._id === selectedOffice ||
     </div>
   </div>
   
-  <div className="p-4 sm:p-6">
+  <div className="p-4 sm:p-2">
     <div className="flex items-center justify-between mb-1">
       <h3 className="font-semibold text-white">{property.title}</h3>
       <div className="flex items-center space-x-2 space-x-reverse">
@@ -5369,6 +5465,27 @@ openEditReservationModal(reservation);
         </button>
       </div>
     )}
+    
+    {/* Expandable Calendar Section */}
+    <div className="mt-4 border-t border-white/20">
+      <button
+        onClick={() => togglePropertyCard(property._id)}
+        className="w-full py-2 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+      >
+        <span className="text-sm">عرض التقويم</span>
+        <ChevronDown 
+          className={`w-4 h-4 mr-2 transition-transform ${
+            expandedPropertyCards.has(property._id) ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+      
+      {expandedPropertyCards.has(property._id) && (
+        <div className="mt-4 animate-in slide-in-from-top duration-200">
+          <PropertyCalendar propertyId={property._id} />
+        </div>
+      )}
+    </div>
   </div>
 </div>
           ))}
