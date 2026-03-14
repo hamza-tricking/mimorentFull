@@ -11,6 +11,7 @@ interface Property {
   title: string;
   description: string;
   pricePerDay: number;
+  priceBeforeDiscountPerDay?: number;
   images: string[];
   wilayaId: {
     _id: string;
@@ -30,6 +31,10 @@ interface Property {
   reservationEndDate?: string;
   createdAt?: string;
   updatedAt?: string;
+  locationGoogleMapLink?: string;
+  targetAudience?: string;
+  capacity?: number;
+  reserveTheProperty?: string;
 }
 
 interface Wilaya {
@@ -439,9 +444,15 @@ const PropertySearch = () => {
             {filteredProperties.map((property) => (
               <div key={property._id} className="group relative">
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-[#24697f] via-teal-500 to-pink-500 rounded-3xl blur-xl opacity-30 group-hover:opacity-50 transition-all duration-1000 group-hover:duration-300"></div>
-                <div className="relative bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/70 overflow-hidden hover:shadow-3xl hover:scale-[1.02] transition-all duration-500">
+                <div 
+                  className="relative bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/70 overflow-hidden hover:shadow-3xl hover:scale-[1.02] transition-all duration-500 cursor-pointer"
+                  onClick={() => openPreviewModal(property)}
+                >
                 {/* Property Image */}
-                <div className="h-36 bg-gradient-to-br cursor-pointer from-[#24697f] via-teal-600 to-pink-600 relative overflow-hidden group" onClick={() => openPhotoPreview(property, currentImageIndex[property._id] || 0)}>
+                <div className="h-36 bg-gradient-to-br cursor-pointer from-[#24697f] via-teal-600 to-pink-600 relative overflow-hidden group" onClick={(e) => {
+                  e.stopPropagation();
+                  openPhotoPreview(property, currentImageIndex[property._id] || 0);
+                }}>
                   {property.images && property.images.length > 0 ? (
                     <>
                       <img
@@ -456,7 +467,10 @@ const PropertySearch = () => {
                         <>
                           {/* Previous Button */}
                           <button
-                            onClick={() => prevImage(property._id, property.images.length)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              prevImage(property._id, property.images.length);
+                            }}
                             className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center opacity-100 transition-all duration-300 hover:bg-white/90 hover:scale-110 shadow-lg z-20"
                           >
                             <svg className="w-4 h-4 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -466,7 +480,10 @@ const PropertySearch = () => {
                           
                           {/* Next Button */}
                           <button
-                            onClick={() => nextImage(property._id, property.images.length)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              nextImage(property._id, property.images.length);
+                            }}
                             className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center opacity-100 transition-all duration-300 hover:bg-white/90 hover:scale-110 shadow-lg z-20"
                           >
                             <svg className="w-4 h-4 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -547,7 +564,10 @@ const PropertySearch = () => {
 
                   <div className="flex gap-2">
                     <button
-                      onClick={() => openPreviewModal(property)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPreviewModal(property);
+                      }}
                       className="flex-1 px-3 py-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 font-bold flex items-center justify-center transform hover:scale-105 shadow-lg hover:shadow-xl text-xs"
                     >
                       <Home className="w-3 h-3 mx-2 ml-1" />
@@ -556,7 +576,10 @@ const PropertySearch = () => {
                     
                     {property.isReserved ? (
                       <button
-                        onClick={() => openContactModal(property)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openContactModal(property);
+                        }}
                         className="flex-1 px-3 py-2 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl hover:from-pink-600 hover:to-pink-700 transition-all duration-300 font-bold flex items-center justify-center transform hover:scale-105 shadow-lg hover:shadow-xl text-xs"
                       >
                         <MessageCircle className="w-3 mx-2 h-3 ml-1" />
@@ -564,7 +587,10 @@ const PropertySearch = () => {
                       </button>
                     ) : (
                       <button
-                        onClick={() => openReservationModal(property)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openReservationModal(property);
+                        }}
                         className="flex-1 px-3 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 text-white rounded-xl hover:from-[#1a5366] hover:to-teal-700 transition-all duration-300 font-bold flex items-center justify-center transform hover:scale-105 shadow-lg hover:shadow-xl text-xs"
                       >
                         <Calendar className="w-3 mx-2 h-3 ml-1" />
