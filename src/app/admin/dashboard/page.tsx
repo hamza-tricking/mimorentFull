@@ -1325,7 +1325,15 @@ setOrders(orders);
       if (reservationInfo) {
         setSelectedPropertyForReservation(propertyId);
         setSelectedReservationId(reservationInfo.reservationId);
-        const reservation = propertyReservations.find((r: any) => r._id === reservationInfo.reservationId);
+        
+        // Use the same data source as the working "تعديل الحجز الأخير" button
+        const reservation = reservations.find((r: any) => {
+          const reservationPropertyId = typeof r.propertyId === 'string' 
+            ? r.propertyId 
+            : r.propertyId?._id || r.propertyId.id;
+          return r._id === reservationInfo.reservationId;
+        });
+        
         if (reservation) {
           setEditingReservation(reservation);
           setShowEditReservationModal(true);
@@ -6510,7 +6518,7 @@ className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none
           name="totalPrice"
           required
           min="0"
-          defaultValue={editingReservation?.totalPrice || ''}
+          defaultValue={editingReservation?.totalPrice?.toString() || ''}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="أدخل السعر الإجمالي"
         />
@@ -6524,7 +6532,7 @@ type="number"
 name="paidAmount"
 required
 min="0"
-defaultValue={editingReservation?.paidAmount || ''}
+defaultValue={editingReservation?.paidAmount?.toString() || ''}
 onChange={(e) => {
   const form = e.target.form;
   if (form) {
@@ -6549,7 +6557,7 @@ type="number"
 name="remainingAmount"
 required
 min="0"
-defaultValue={editingReservation?.remainingAmount || ''}
+defaultValue={editingReservation?.remainingAmount?.toString() || ''}
 readOnly
 className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
 placeholder="المبلغ المتبقي"
