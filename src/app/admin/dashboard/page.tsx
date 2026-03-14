@@ -133,6 +133,8 @@ export default function Dashboard() {
   const [editWilayaId, setEditWilayaId] = useState<string>('');
   const [editOfficeId, setEditOfficeId] = useState<string>('');
   const [currentImageIndex, setCurrentImageIndex] = useState<{ [key: string]: number }>({});
+  const [addPropertyAvailable, setAddPropertyAvailable] = useState(true);
+  const [editPropertyAvailable, setEditPropertyAvailable] = useState(true);
   
   // Reservation state
   const [reservations, setReservations] = useState<any[]>([]);
@@ -761,6 +763,7 @@ return true;
         setImageLinks([]);
         setCurrentImageLink('');
         setPropertyError(null);
+        setAddPropertyAvailable(true);
         addToast('تمت إضافة العقار بنجاح', 'success');
       } else {
         setPropertyError(data.message || 'Failed to add property');
@@ -806,6 +809,7 @@ return true;
         setEditWilayaId('');
         setEditOfficeId('');
         setPropertyError(null);
+        setEditPropertyAvailable(true);
         addToast('تم تحديث العقار بنجاح', 'success');
       } else {
         setPropertyError(data.message || 'Failed to update property');
@@ -2032,6 +2036,7 @@ return err.msg || JSON.stringify(err);
     setSelectedOffice(officeId);
     setEditWilayaId(wilayaId);
     setEditOfficeId(officeId);
+    setEditPropertyAvailable(property.available !== false);
     
     setShowEditPropertyModal(true);
   };
@@ -4983,7 +4988,8 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
           pricePerDay: Number(formData.get('pricePerDay')),
           images: imageLinks,
           wilayaId: formData.get('wilayaId') as string,
-          officeId: formData.get('officeId') as string
+          officeId: formData.get('officeId') as string,
+          available: addPropertyAvailable
         };
         handleAddProperty(propertyData);
       }}
@@ -5072,6 +5078,58 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
             </svg>
           </div>
         </div>
+      </div>
+      
+      <div className="flex items-center gap-3 p-3 bg-gray-50/50 rounded-xl border border-gray-200/50">
+        <span className="text-sm font-medium text-gray-700">العقار متاح للحجز:</span>
+        <label className="relative cursor-pointer">
+          <input
+            type="checkbox"
+            checked={addPropertyAvailable}
+            onChange={(e) => setAddPropertyAvailable(e.target.checked)}
+            className="sr-only"
+          />
+          <div className="relative w-14 h-8 bg-gradient-to-br from-gray-600 to-gray-800 rounded-full shadow-inner transition-all duration-300">
+            {/* Inner track */}
+            <div className="absolute inset-0.5 bg-gradient-to-br from-gray-800 to-gray-900 rounded-full"></div>
+            
+            {/* Energy lines */}
+            <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${addPropertyAvailable ? 'opacity-100' : 'opacity-0'}`}
+                 style={{ top: '20%', transform: 'rotate(15deg)' }}></div>
+            <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${addPropertyAvailable ? 'opacity-100' : 'opacity-0'}`}
+                 style={{ top: '50%', transform: 'rotate(0deg)' }}></div>
+            <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${addPropertyAvailable ? 'opacity-100' : 'opacity-0'}`}
+                 style={{ top: '80%', transform: 'rotate(-15deg)' }}></div>
+            
+            {/* Toggle orb */}
+            <div className={`absolute h-6 w-6 top-1 left-1 bg-gradient-to-br from-rose-500 to-teal-500 rounded-full transition-all duration-600 ease-out transform ${addPropertyAvailable ? 'translate-x-6 rotate-360' : 'translate-x-0'} shadow-xl`}>
+              <div className="absolute inset-1 bg-gradient-to-br from-white to-gray-200 rounded-full transition-all duration-500 overflow-hidden">
+                <div className="absolute inset-0 opacity-10" style={{
+                  background: 'repeating-conic-gradient(from 0deg, transparent 0deg, rgba(0, 0, 0, 0.1) 10deg, transparent 20deg)',
+                  animation: addPropertyAvailable ? 'patternRotate 10s linear infinite' : 'none'
+                }}></div>
+              </div>
+              <div className={`absolute inset-0 border border-white/10 rounded-full transition-all duration-500 ${addPropertyAvailable ? 'border-emerald-400/30' : ''}`}
+                   style={{ animation: addPropertyAvailable ? 'ringPulse 2s infinite' : 'none' }}></div>
+            </div>
+            
+            {/* Particles */}
+            {addPropertyAvailable && (
+              <div className="absolute w-full h-full">
+                <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '20%', animationDelay: '0s' }}></div>
+                <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '40%', animationDelay: '0.2s' }}></div>
+                <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '60%', animationDelay: '0.4s' }}></div>
+              </div>
+            )}
+          </div>
+        </label>
+        <span className={`text-sm mx-2 font-semibold transition-colors duration-300 ${
+          addPropertyAvailable 
+            ? 'text-emerald-400 drop-shadow-sm' 
+            : 'text-gray-400'
+        }`}>
+          {addPropertyAvailable ? 'متاح' : 'غير متاح'}
+        </span>
       </div>
       
       <div>
@@ -5204,6 +5262,7 @@ setShowAddPropertyModal(false);
 setImageLinks([]);
 setCurrentImageLink('');
 setPropertyError(null);
+setAddPropertyAvailable(true);
             }}
             className="px-6 py-3 border border-gray-300/50 text-gray-600 rounded-xl hover:bg-gray-100/80 transition-all duration-200 font-medium text-sm"
           >
@@ -5319,7 +5378,8 @@ setPropertyError(null);
           pricePerDay: Number(formData.get('pricePerDay')),
           images: imageLinks,
           wilayaId: editWilayaId,
-          officeId: editOfficeId
+          officeId: editOfficeId,
+          available: editPropertyAvailable
         };
         handleEditProperty(propertyData);
       }}
@@ -5401,6 +5461,58 @@ setPropertyError(null);
           <option value="villa">فيلا</option>
           <option value="shop">قاراج</option>
         </select>
+      </div>
+      
+      <div dir='rtl' className="flex items-center justify-end gap-3 p-3 bg-gray-50/50 rounded-xl border border-gray-200/50">
+        <span className="text-sm font-medium text-gray-700">العقار متاح للحجز:</span>
+        <label className="relative cursor-pointer">
+          <input
+            type="checkbox"
+            checked={editPropertyAvailable}
+            onChange={(e) => setEditPropertyAvailable(e.target.checked)}
+            className="sr-only"
+          />
+          <div className="relative w-14 h-8 bg-gradient-to-br from-gray-600 to-gray-800 rounded-full shadow-inner transition-all duration-300">
+            {/* Inner track */}
+            <div className="absolute inset-0.5 bg-gradient-to-br from-gray-800 to-gray-900 rounded-full"></div>
+            
+            {/* Energy lines */}
+            <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${editPropertyAvailable ? 'opacity-100' : 'opacity-0'}`}
+                 style={{ top: '20%', transform: 'rotate(15deg)' }}></div>
+            <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${editPropertyAvailable ? 'opacity-100' : 'opacity-0'}`}
+                 style={{ top: '50%', transform: 'rotate(0deg)' }}></div>
+            <div className={`absolute w-full h-0.5 bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent transition-all duration-500 ${editPropertyAvailable ? 'opacity-100' : 'opacity-0'}`}
+                 style={{ top: '80%', transform: 'rotate(-15deg)' }}></div>
+            
+            {/* Toggle orb */}
+            <div className={`absolute h-6 w-6 top-1 left-1 bg-gradient-to-br from-rose-500 to-teal-500 rounded-full transition-all duration-600 ease-out transform ${editPropertyAvailable ? 'translate-x-6 rotate-360' : 'translate-x-0'} shadow-xl`}>
+              <div className="absolute inset-1 bg-gradient-to-br from-white to-gray-200 rounded-full transition-all duration-500 overflow-hidden">
+                <div className="absolute inset-0 opacity-10" style={{
+                  background: 'repeating-conic-gradient(from 0deg, transparent 0deg, rgba(0, 0, 0, 0.1) 10deg, transparent 20deg)',
+                  animation: editPropertyAvailable ? 'patternRotate 10s linear infinite' : 'none'
+                }}></div>
+              </div>
+              <div className={`absolute inset-0 border border-white/10 rounded-full transition-all duration-500 ${editPropertyAvailable ? 'border-emerald-400/30' : ''}`}
+                   style={{ animation: editPropertyAvailable ? 'ringPulse 2s infinite' : 'none' }}></div>
+            </div>
+            
+            {/* Particles */}
+            {editPropertyAvailable && (
+              <div className="absolute w-full h-full">
+                <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '20%', animationDelay: '0s' }}></div>
+                <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '40%', animationDelay: '0.2s' }}></div>
+                <div className="absolute w-1 h-1 bg-emerald-400 rounded-full animate-ping" style={{ left: '60%', animationDelay: '0.4s' }}></div>
+              </div>
+            )}
+          </div>
+        </label>
+        <span className={`text-sm mx-2 font-semibold transition-colors duration-300 ${
+          editPropertyAvailable 
+            ? 'text-emerald-400 drop-shadow-sm' 
+            : 'text-gray-400'
+        }`}>
+          {editPropertyAvailable ? 'متاح' : 'غير متاح'}
+        </span>
       </div>
       
       <div>
@@ -5513,6 +5625,7 @@ setCurrentImageLink('');
 setEditWilayaId('');
 setEditOfficeId('');
 setPropertyError(null);
+setEditPropertyAvailable(true);
             }}
             className="px-6 py-3 border border-gray-300/50 text-gray-600 rounded-xl hover:bg-gray-100/80 transition-all duration-200 font-medium text-sm"
           >
