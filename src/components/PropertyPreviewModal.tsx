@@ -17,6 +17,7 @@ interface Property {
   officeId: {
     _id: string;
     name: string;
+    phone?: string;
   };
   available: boolean;
   isReserved: boolean;
@@ -264,121 +265,52 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
                 </div>
 
                 {/* Property Features */}
-                <div className="space-y-4 mt-8">
-                  {/* First Row - Basic Features */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {property.bedrooms && (
-                      <div className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl p-4 border border-purple-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <div className="relative flex items-center justify-center">
-                          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                            <Users className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-purple-800 text-lg">{property.bedrooms}</div>
-                            <div className="text-purple-600 text-xs font-medium">غرف نوم</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {property.bathrooms && (
-                      <div className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 border border-blue-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <div className="relative flex items-center justify-center">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                            <Bath className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-blue-800 text-lg">{property.bathrooms}</div>
-                            <div className="text-blue-600 text-xs font-medium">حمامات</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Second Row - Size & Type */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {property.area && (
-                      <div className="group relative overflow-hidden bg-gradient-to-br from-green-50 to-green-100 rounded-2xl p-4 border border-green-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                        <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <div className="relative flex items-center justify-center">
-                          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                            <Square className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-green-800 text-lg">{property.area}</div>
-                            <div className="text-green-600 text-xs font-medium">متر مربع</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {property.propertyType && (
-                      <div className="group relative overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-4 border border-orange-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <div className="relative flex items-center justify-center">
-                          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                            <Home className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-orange-800 text-lg capitalize">{property.propertyType}</div>
-                            <div className="text-orange-600 text-xs font-medium">نوع العقار</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Third Row - New Fields */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {property.capacity && (
-                      <div className="group relative overflow-hidden bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-2xl p-4 border border-indigo-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <div className="relative flex items-center justify-center">
-                          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                            <Users className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-indigo-800 text-lg">{property.capacity}</div>
-                            <div className="text-indigo-600 text-xs font-medium">السعة</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {property.targetAudience && (
-                      <div className="group relative overflow-hidden bg-gradient-to-br from-pink-50 to-pink-100 rounded-2xl p-4 border border-pink-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                        <div className="absolute inset-0 bg-gradient-to-br from-pink-500/5 to-rose-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                        <div className="relative flex items-center justify-center">
-                          <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-pink-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                            <Users className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-pink-800 text-lg">
-                              {property.targetAudience === 'family' ? 'عائلات' : 
-                               property.targetAudience === 'normal' ? 'أفراد' : 'الجميع'}
-                            </div>
-                            <div className="text-pink-600 text-xs font-medium">الفئة المستهدفة</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Fourth Row - Reservation Type */}
+                <div className="grid grid-cols-2 gap-4 mt-8">
+                  {property.bedrooms && (
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Users className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">{property.bedrooms} غرف نوم</span>
+                    </div>
+                  )}
+                  {property.bathrooms && (
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Bath className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">{property.bathrooms} حمامات</span>
+                    </div>
+                  )}
+                  {property.area && (
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Square className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">{property.area} م²</span>
+                    </div>
+                  )}
+                  {property.propertyType && (
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Home className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">{property.propertyType}</span>
+                    </div>
+                  )}
+                  {property.capacity && (
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Users className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">{property.capacity} شخص</span>
+                    </div>
+                  )}
+                  {property.targetAudience && (
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Users className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">
+                        {property.targetAudience === 'family' ? 'عائلات' : 
+                         property.targetAudience === 'normal' ? 'أفراد' : 'عائلات وأفراد'}
+                      </span>
+                    </div>
+                  )}
                   {property.reserveTheProperty && (
-                    <div className="group relative overflow-hidden bg-gradient-to-br from-teal-50 to-teal-100 rounded-2xl p-4 border border-teal-200/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
-                      <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                      <div className="relative flex items-center justify-center">
-                        <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-600 rounded-full flex items-center justify-center shadow-lg mb-2">
-                          <Calendar className="w-5 h-5 text-white" />
-                        </div>
-                        <div className="text-center">
-                          <div className="font-bold text-teal-800 text-lg">
-                            {property.reserveTheProperty === 'daily' ? 'يومي' : 'شهري'}
-                          </div>
-                          <div className="text-teal-600 text-xs font-medium">نوع الحجز</div>
-                        </div>
-                      </div>
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                      <Calendar className="w-5 h-5 ml-2 text-[#24697f]" />
+                      <span className="font-medium text-sm">
+                        {property.reserveTheProperty === 'daily' ? 'حجز يومي' : 'حجز شهري'}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -422,6 +354,18 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
                     <MapPin className="w-5 h-5 mr-3 text-[#24697f]" />
                     <span className="font-medium text-lg">{property.wilayaId.name}</span>
                   </div>
+                  {property.officeId.phone && (
+                    <a
+                      href={`tel:${property.officeId.phone}`}
+                      className="flex items-center justify-center text-green-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50 hover:bg-green-50/80 transition-all duration-300 hover:scale-105"
+                    >
+                      <Phone className="w-5 h-5 mr-3 text-green-600" />
+                      <div className="text-center">
+                        <div className="font-bold text-lg">{property.officeId.phone}</div>
+                        <div className="text-sm text-green-600 font-medium">اتصل مباشرة</div>
+                      </div>
+                    </a>
+                  )}
                 </div>
               </div>
 
