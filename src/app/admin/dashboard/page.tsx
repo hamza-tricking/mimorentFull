@@ -308,13 +308,22 @@ export default function Dashboard() {
     totalPrice: '',
     paidAmount: '',
     remainingAmount: '',
-    status: 'pending' as 'pending' | 'confirmed' | 'cancelled' | 'completed'
+    status: 'pending',
+    isMarried: false,
+    numberOfPeople: '',
+    identityImages: [] as string[],
+    notes: [] as string[],
+    currentNote: ''
   });
   const [editReservationForm, setEditReservationForm] = useState({
     totalPrice: '',
     paidAmount: '',
     remainingAmount: '',
-    status: 'pending' as 'pending' | 'confirmed' | 'cancelled' | 'completed'
+    status: 'pending',
+    isMarried: false,
+    numberOfPeople: '',
+    identityImages: [] as string[],
+    notes: [] as string[]
   });
   
   // History state
@@ -1187,11 +1196,17 @@ setOrders(orders);
             const property = properties.find(p => p._id === propertyId);
             if (property) {
               // Pre-fill the reservation form with order data
+              const isFamilyProperty = property?.propertyType === 'home' || property?.propertyType === 'villa';
               setAddReservationForm({
                 totalPrice: '0',
                 paidAmount: '0',
                 remainingAmount: '0',
-                status: 'confirmed' as 'pending' | 'confirmed' | 'cancelled' | 'completed'
+                status: 'confirmed',
+                isMarried: isFamilyProperty ? true : false,
+                numberOfPeople: isFamilyProperty ? '1' : '1',
+                identityImages: [],
+                notes: [],
+                currentNote: ''
               });
               
               // Set pre-filled data for form inputs
@@ -1932,6 +1947,10 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
     employerId: string | null;
     propertyId: string;
     status: string;
+    isMarried: boolean;
+    numberOfPeople: string;
+    identityImages: string[];
+    notes: string[];
     previousReservation?: {
       customerName?: string;
       customerPhone?: string;
@@ -1949,7 +1968,7 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
       setProperties(prevProperties => 
         prevProperties.map(property => 
           property._id === reservationData.propertyId 
-? { ...property, available: true, isReserved: true }
+? { ...property,  isReserved: true }
 : property
         )
       );
@@ -1972,6 +1991,7 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
         // Update properties to refresh calendar
         setProperties(prev => prev.map(property => {
           if (property._id === selectedPropertyForReservation) {
+            // Update the reservation in the property's reservationIds array
             return {
               ...property,
               reservationIds: [...(property.reservationIds || []), data.data.reservation._id]
@@ -1988,7 +2008,12 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
           totalPrice: '',
           paidAmount: '',
           remainingAmount: '',
-          status: 'pending'
+          status: 'pending',
+          isMarried: false,
+          numberOfPeople: '',
+          identityImages: [],
+          notes: [],
+          currentNote: ''
         });
         // Refresh orders to update their status after reservation is created
         await fetchOrders();
@@ -2030,11 +2055,19 @@ return err.msg || JSON.stringify(err);
   };
 
   const resetAddReservationForm = () => {
+    const property = properties.find((p: any) => p._id === selectedPropertyForReservation);
+    const isFamilyProperty = property?.propertyType === 'home' || property?.propertyType === 'villa';
+    
     setAddReservationForm({
       totalPrice: '',
       paidAmount: '',
       remainingAmount: '',
-      status: 'pending'
+      status: 'pending',
+      isMarried: isFamilyProperty ? true : false, // Auto-set to married for family properties
+      numberOfPeople: '',
+      identityImages: [],
+      notes: [],
+      currentNote: ''
     });
     // Don't reset selectedPropertyForReservation here - it should stay set
   };
@@ -6727,7 +6760,11 @@ openEditReservationModal(reservation);
           remainingAmount: remainingAmount,
           paymentStatus: formData.get('paymentStatus') as string,
           employerId: formData.get('employerId') as string || null,
-          status: 'pending'
+          status: 'pending',
+          isMarried: addReservationForm.isMarried,
+          numberOfPeople: addReservationForm.isMarried ? addReservationForm.numberOfPeople : '1',
+          identityImages: addReservationForm.identityImages.filter(img => img.trim() !== ''),
+          notes: addReservationForm.notes
         };
         
         handleAddReservation(reservationData);
@@ -6922,6 +6959,181 @@ setAddReservationForm(prev => ({
         </select>
       </div>
 
+      {/* New Fields */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">الحالة العائلية</label>
+        {(() => {
+          const property = properties.find((p: any) => p._id === selectedPropertyForReservation);
+          const isFamilyProperty = property?.propertyType === 'home' || property?.propertyType === 'villa';
+          
+          if (isFamilyProperty) {
+            // Auto-set to married for family properties
+            return (
+              <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-700">
+                متزوج (تلقائي للعقارات العائلية)
+              </div>
+            );
+          }
+          
+          return (
+            <select
+              name="isMarried"
+              required
+              value={addReservationForm.isMarried.toString()}
+              onChange={(e) => {
+                const isMarried = e.target.value === 'true';
+                setAddReservationForm(prev => ({
+                  ...prev,
+                  isMarried
+                }));
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="false">أعزب</option>
+              <option value="true">متزوج</option>
+            </select>
+          );
+        })()}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">عدد الأشخاص</label>
+        <input
+          type="number"
+          name="numberOfPeople"
+          required
+          min="1"
+          value={addReservationForm.numberOfPeople}
+          onChange={(e) => {
+            setAddReservationForm(prev => ({
+              ...prev,
+              numberOfPeople: e.target.value
+            }));
+          }}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="أدخل عدد الأشخاص"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {addReservationForm.isMarried ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف'}
+        </label>
+        <div className="space-y-2">
+          {addReservationForm.identityImages.map((image, index) => (
+            <div key={index} className="flex items-center space-x-2 space-x-reverse">
+              <input
+                type="text"
+                value={image}
+                onChange={(e) => {
+                  const newImages = [...addReservationForm.identityImages];
+                  newImages[index] = e.target.value;
+                  setAddReservationForm(prev => ({
+                    ...prev,
+                    identityImages: newImages
+                  }));
+                }}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="رابط الصورة"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const newImages = addReservationForm.identityImages.filter((_, i) => i !== index);
+                  setAddReservationForm(prev => ({
+                    ...prev,
+                    identityImages: newImages
+                  }));
+                }}
+                className="px-3 py-2 mx-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                حذف
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setAddReservationForm(prev => ({
+                ...prev,
+                identityImages: [...prev.identityImages, '']
+              }));
+            }}
+            className="w-full px-3 py-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-600 transition-colors"
+          >
+            إضافة صورة
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2 mb-2">
+            {addReservationForm.notes.map((note, index) => (
+              <span
+                key={index}
+                className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+              >
+                {note}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newNotes = addReservationForm.notes.filter((_, i) => i !== index);
+                    setAddReservationForm(prev => ({
+                      ...prev,
+                      notes: newNotes
+                    }));
+                  }}
+                  className="mr-2 text-blue-600 hover:text-blue-800"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex space-x-2 space-x-reverse">
+            <input
+              type="text"
+              value={addReservationForm.currentNote || ''}
+              onChange={(e) => {
+                setAddReservationForm(prev => ({
+                  ...prev,
+                  currentNote: e.target.value
+                }));
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && addReservationForm.currentNote?.trim()) {
+                  e.preventDefault();
+                  setAddReservationForm(prev => ({
+                    ...prev,
+                    notes: [...prev.notes, prev.currentNote!.trim()],
+                    currentNote: ''
+                  }));
+                }
+              }}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="أضف ملاحظة واضغط Enter"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (addReservationForm.currentNote?.trim()) {
+                  setAddReservationForm(prev => ({
+                    ...prev,
+                    notes: [...prev.notes, prev.currentNote!.trim()],
+                    currentNote: ''
+                  }));
+                }
+              }}
+              className="px-4 mx-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              إضافة
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Error Message */}
       {reservationError && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
@@ -7057,7 +7269,11 @@ setShowContractModal(true);
           remainingAmount: remainingAmount,
           paymentStatus: formData.get('paymentStatus') as string,
           employerId: editingReservation?.employerId || null,
-          status: formData.get('status') as string
+          status: formData.get('status') as string,
+          isMarried: formData.get('isMarried') === 'true',
+          numberOfPeople: formData.get('numberOfPeople') as string,
+          identityImages: editingReservation?.identityImages || [],
+          notes: editingReservation?.notes || []
         };
         handleEditReservation(reservationData);
       }}
@@ -7211,6 +7427,145 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
           <option value="cancelled">ملغي</option>
           <option value="completed">مكتمل</option>
         </select>
+      </div>
+
+      {/* New Fields */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">الحالة العائلية</label>
+        <select
+          name="isMarried"
+          required
+          defaultValue={editingReservation?.isMarried?.toString() || 'false'}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="false">أعزب</option>
+          <option value="true">متزوج</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">عدد الأشخاص</label>
+        <input
+          type="number"
+          name="numberOfPeople"
+          required
+          min="1"
+          defaultValue={editingReservation?.numberOfPeople?.toString() || ''}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="أدخل عدد الأشخاص"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {editingReservation?.isMarried ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف'}
+        </label>
+        <div className="space-y-2">
+          {(editingReservation?.identityImages || []).map((image: string, index: number) => (
+            <div key={index} className="flex items-center space-x-2 space-x-reverse">
+              <input
+                type="text"
+                name={`identityImages_${index}`}
+                defaultValue={image}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="رابط الصورة"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const currentImages = editingReservation?.identityImages || [];
+                  const newImages = currentImages.filter((_: string, i: number) => i !== index);
+                  setEditingReservation((prev: any) => prev ? {
+                    ...prev,
+                    identityImages: newImages
+                  } : null);
+                }}
+                className="px-3 py-2 mx-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                حذف
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setEditingReservation((prev: { identityImages: any; }) => prev ? {
+                ...prev,
+                identityImages: [...(prev.identityImages || []), '']
+              } : null);
+            }}
+            className="w-full px-3 py-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-600 transition-colors"
+          >
+            إضافة صورة
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2 mb-2">
+            {(editingReservation?.notes || []).map((note: string, index: number) => (
+              <span
+                key={index}
+                className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+              >
+                {note}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentNotes = editingReservation?.notes || [];
+                    const newNotes = currentNotes.filter((_: string, i: number) => i !== index);
+                    setEditingReservation((prev: any) => prev ? {
+                      ...prev,
+                      notes: newNotes
+                    } : null);
+                  }}
+                  className="mr-2 text-blue-600 hover:text-blue-800"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex space-x-2 space-x-reverse">
+            <input
+              type="text"
+              name="newNote"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="أضف ملاحظة واضغط Enter"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const target = e.target as HTMLInputElement;
+                  if (target.value.trim()) {
+                    setEditingReservation((prev: { notes: any; }) => prev ? {
+                      ...prev,
+                      notes: [...(prev.notes || []), target.value.trim()]
+                    } : null);
+                    target.value = '';
+                  }
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const input = document.querySelector('input[name="newNote"]') as HTMLInputElement;
+                if (input?.value.trim()) {
+                  setEditingReservation((prev: any) => prev ? {
+                    ...prev,
+                    notes: [...(prev.notes || []), input.value.trim()]
+                  } : null);
+                  input.value = '';
+                }
+              }}
+              className="px-4 mx-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              إضافة
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Error Message */}
