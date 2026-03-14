@@ -9,6 +9,7 @@ import Notifications from '../../../components/admin/Notifications';
 import NotificationDropdown from '../../../components/admin/NotificationDropdown';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import AdminProfileModal from '../../../components/admin/AdminProfileModal';
+import GoogleMapPreview from '../../../components/GoogleMapPreview';
 
 // Debug translation function
 let debugT: (key: string) => string = (key: string) => key;
@@ -135,6 +136,150 @@ export default function Dashboard() {
   const [currentImageIndex, setCurrentImageIndex] = useState<{ [key: string]: number }>({});
   const [addPropertyAvailable, setAddPropertyAvailable] = useState(true);
   const [editPropertyAvailable, setEditPropertyAvailable] = useState(true);
+  
+  // Reservation pricing states
+  const [addReservationType, setAddReservationType] = useState('daily');
+  const [editReservationType, setEditReservationType] = useState('daily');
+  const [addMonthlyPrice, setAddMonthlyPrice] = useState('');
+  const [editMonthlyPrice, setEditMonthlyPrice] = useState('');
+  const [editMapUrl, setEditMapUrl] = useState('');
+  const [addMapUrl, setAddMapUrl] = useState('');
+  
+  const handleLocationSelect = (lat: number, lng: number) => {
+    // Create a new Google Maps URL with the selected coordinates
+    const newMapUrl = `https://www.google.com/maps?q=${lat},${lng}&z=15`;
+    setEditMapUrl(newMapUrl);
+  };
+  
+  const handleAddLocationSelect = (lat: number, lng: number) => {
+    // Create a new Google Maps URL with selected coordinates
+    const newMapUrl = `https://www.google.com/maps?q=${lat},${lng}&z=15`;
+    setAddMapUrl(newMapUrl);
+  };
+  const [addMonthlyDiscountPrice, setAddMonthlyDiscountPrice] = useState('');
+  const [editMonthlyDiscountPrice, setEditMonthlyDiscountPrice] = useState('');
+  
+  // Price calculation functions
+  const calculateDailyFromMonthly = (monthlyPrice: string): string => {
+    const monthly = parseFloat(monthlyPrice);
+    if (isNaN(monthly) || monthly <= 0) return '';
+    return (monthly / 30).toFixed(2);
+  };
+  
+  const calculateMonthlyFromDaily = (dailyPrice: string): string => {
+    const daily = parseFloat(dailyPrice);
+    if (isNaN(daily) || daily <= 0) return '';
+    return (daily * 30).toFixed(2);
+  };
+  
+  const calculateDailyFromMonthlyRounded = (monthlyPrice: string): string => {
+    const monthly = parseFloat(monthlyPrice);
+    if (isNaN(monthly) || monthly <= 0) return '';
+    const daily = monthly / 30;
+    return Math.round(daily).toString();
+  };
+  
+  const calculateMonthlyFromDailyRounded = (dailyPrice: string): string => {
+    const daily = parseFloat(dailyPrice);
+    if (isNaN(daily) || daily <= 0) return '';
+    const monthly = daily * 30;
+    return Math.round(monthly).toString();
+  };
+  
+  const handleAddReservationTypeChange = (type: string) => {
+    setAddReservationType(type);
+    if (type === 'daily') {
+      // When switching to daily, clear monthly price
+      setAddMonthlyPrice('');
+    }
+  };
+  
+  const handleEditReservationTypeChange = (type: string) => {
+    setEditReservationType(type);
+    if (type === 'daily') {
+      setEditMonthlyPrice('');
+    }
+  };
+  
+  const handleAddMonthlyPriceChange = (monthlyPrice: string) => {
+    setAddMonthlyPrice(monthlyPrice);
+    const dailyPrice = calculateDailyFromMonthlyRounded(monthlyPrice);
+    // Update the daily price input field with rounded value
+    const dailyInput = document.querySelector('input[name="pricePerDay"]') as HTMLInputElement;
+    if (dailyInput && dailyPrice) {
+      dailyInput.value = dailyPrice;
+    }
+  };
+  
+  const handleEditMonthlyPriceChange = (monthlyPrice: string) => {
+    setEditMonthlyPrice(monthlyPrice);
+    const dailyPrice = calculateDailyFromMonthlyRounded(monthlyPrice);
+    // Update the daily price input field with rounded value
+    const dailyInput = document.querySelector('input[name="pricePerDay"]') as HTMLInputElement;
+    if (dailyInput && dailyPrice) {
+      dailyInput.value = dailyPrice;
+    }
+  };
+  
+  const handleAddDailyPriceChange = (dailyPrice: string) => {
+    const monthlyPrice = calculateMonthlyFromDailyRounded(dailyPrice);
+    setAddMonthlyPrice(monthlyPrice);
+    // Update the monthly price input field with rounded value
+    const monthlyInput = document.querySelector('input[name="monthlyPrice"]') as HTMLInputElement;
+    if (monthlyInput && monthlyPrice) {
+      monthlyInput.value = monthlyPrice;
+    }
+  };
+  
+  const handleEditDailyPriceChange = (dailyPrice: string) => {
+    const monthlyPrice = calculateMonthlyFromDailyRounded(dailyPrice);
+    setEditMonthlyPrice(monthlyPrice);
+    // Update the monthly price input field with rounded value
+    const monthlyInput = document.querySelector('input[name="monthlyPrice"]') as HTMLInputElement;
+    if (monthlyInput && monthlyPrice) {
+      monthlyInput.value = monthlyPrice;
+    }
+  };
+  
+  const handleAddMonthlyDiscountPriceChange = (monthlyDiscountPrice: string) => {
+    setAddMonthlyDiscountPrice(monthlyDiscountPrice);
+    const dailyDiscountPrice = calculateDailyFromMonthlyRounded(monthlyDiscountPrice);
+    // Update the daily discount price input field with rounded value
+    const dailyDiscountInput = document.querySelector('input[name="priceBeforeDiscountPerDay"]') as HTMLInputElement;
+    if (dailyDiscountInput && dailyDiscountPrice) {
+      dailyDiscountInput.value = dailyDiscountPrice;
+    }
+  };
+  
+  const handleEditMonthlyDiscountPriceChange = (monthlyDiscountPrice: string) => {
+    setEditMonthlyDiscountPrice(monthlyDiscountPrice);
+    const dailyDiscountPrice = calculateDailyFromMonthlyRounded(monthlyDiscountPrice);
+    // Update the daily discount price input field with rounded value
+    const dailyDiscountInput = document.querySelector('input[name="priceBeforeDiscountPerDay"]') as HTMLInputElement;
+    if (dailyDiscountInput && dailyDiscountPrice) {
+      dailyDiscountInput.value = dailyDiscountPrice;
+    }
+  };
+  
+  const handleAddDailyDiscountPriceChange = (dailyDiscountPrice: string) => {
+    const monthlyDiscountPrice = calculateMonthlyFromDailyRounded(dailyDiscountPrice);
+    setAddMonthlyDiscountPrice(monthlyDiscountPrice);
+    // Update the monthly discount price input field with rounded value
+    const monthlyDiscountInput = document.querySelector('input[name="monthlyDiscountPrice"]') as HTMLInputElement;
+    if (monthlyDiscountInput && monthlyDiscountPrice) {
+      monthlyDiscountInput.value = monthlyDiscountPrice;
+    }
+  };
+  
+  const handleEditDailyDiscountPriceChange = (dailyDiscountPrice: string) => {
+    const monthlyDiscountPrice = calculateMonthlyFromDailyRounded(dailyDiscountPrice);
+    setEditMonthlyDiscountPrice(monthlyDiscountPrice);
+    // Update the monthly discount price input field with rounded value
+    const monthlyDiscountInput = document.querySelector('input[name="monthlyDiscountPrice"]') as HTMLInputElement;
+    if (monthlyDiscountInput && monthlyDiscountPrice) {
+      monthlyDiscountInput.value = monthlyDiscountPrice;
+    }
+  };
   
   // Reservation state
   const [reservations, setReservations] = useState<any[]>([]);
@@ -762,12 +907,26 @@ return true;
         setShowAddPropertyModal(false);
         setImageLinks([]);
         setCurrentImageLink('');
+        setAddMapUrl('');
         setPropertyError(null);
         setAddPropertyAvailable(true);
         addToast('تمت إضافة العقار بنجاح', 'success');
       } else {
-        setPropertyError(data.message || 'Failed to add property');
-        addToast(data.message || 'فشل في إضافة العقار', 'error');
+        // Handle detailed error messages
+        let errorMessage = 'فشل في إضافة العقار';
+        
+        if (data.errors && Array.isArray(data.errors)) {
+          // Validation errors array
+          errorMessage = data.errors.map((err: any) => err.msg || err.message).join(', ');
+        } else if (data.message) {
+          errorMessage = data.message;
+        } else if (data.error) {
+          errorMessage = data.error;
+        }
+        
+        console.error('Backend error response:', data);
+        setPropertyError(errorMessage);
+        addToast(errorMessage, 'error');
       }
     } catch (error) {
       console.error('Failed to add property:', error);
@@ -808,12 +967,26 @@ return true;
         setImageLinks([]);
         setEditWilayaId('');
         setEditOfficeId('');
+        setEditMapUrl('');
         setPropertyError(null);
         setEditPropertyAvailable(true);
         addToast('تم تحديث العقار بنجاح', 'success');
       } else {
-        setPropertyError(data.message || 'Failed to update property');
-        addToast(data.message || 'فشل في تحديث العقار', 'error');
+        // Handle detailed error messages
+        let errorMessage = 'فشل في تحديث العقار';
+        
+        if (data.errors && Array.isArray(data.errors)) {
+          // Validation errors array
+          errorMessage = data.errors.map((err: any) => err.msg || err.message).join(', ');
+        } else if (data.message) {
+          errorMessage = data.message;
+        } else if (data.error) {
+          errorMessage = data.error;
+        }
+        
+        console.error('Backend error response:', data);
+        setPropertyError(errorMessage);
+        addToast(errorMessage, 'error');
       }
     } catch (error) {
       console.error('Failed to update property:', error);
@@ -2037,6 +2210,7 @@ return err.msg || JSON.stringify(err);
     setEditWilayaId(wilayaId);
     setEditOfficeId(officeId);
     setEditPropertyAvailable(property.available !== false);
+    setEditMapUrl(property.locationGoogleMapLink || '');
     
     setShowEditPropertyModal(true);
   };
@@ -4913,11 +5087,12 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
   className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
   onClick={() => setShowAddPropertyModal(false)}
 >
-  <div 
-    className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 w-full max-w-5xl lg:max-w-4xl md:max-w-3xl sm:max-w-full mx-4 relative z-[100000] max-h-[90vh] sm:max-h-[95vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300"
+  <div  
+    className="bg-white/95  backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 w-full max-w-5xl lg:max-w-4xl md:max-w-3xl sm:max-w-full mx-4 relative z-[100000] max-h-[90vh] sm:max-h-[95vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300"
     style={{
       scrollbarWidth: 'thin',
-      scrollbarColor: '#cbd5e1 #f1f5f9'
+      scrollbarColor: '#cbd5e1 #f1f5f9',
+      direction: 'ltr'
     }}
     onClick={(e) => e.stopPropagation()}
   >
@@ -4986,6 +5161,11 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
           description: formData.get('description') as string,
           propertyType: formData.get('propertyType') as string,
           pricePerDay: Number(formData.get('pricePerDay')),
+          reserveTheProperty: formData.get('reserveTheProperty') as string || 'daily',
+          locationGoogleMapLink: formData.get('locationGoogleMapLink') as string || '',
+          priceBeforeDiscountPerDay: formData.get('priceBeforeDiscountPerDay') ? Number(formData.get('priceBeforeDiscountPerDay')) : undefined,
+          capacity: formData.get('capacity') ? Number(formData.get('capacity')) : undefined,
+          targetAudience: formData.get('targetAudience') as string || 'both',
           images: imageLinks,
           wilayaId: formData.get('wilayaId') as string,
           officeId: formData.get('officeId') as string,
@@ -5040,6 +5220,171 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
             <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">رابط خرائط جوجل (اختياري)</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="url"
+            name="locationGoogleMapLink"
+            value={addMapUrl}
+            onChange={(e) => setAddMapUrl(e.target.value)}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل رابط خرائط جوجل"
+          />
+        </div>
+        <GoogleMapPreview mapUrl={addMapUrl} className="mt-3" onLocationSelect={handleAddLocationSelect} />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">نوع الحجز</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <select
+            name="reserveTheProperty"
+            value={addReservationType}
+            onChange={(e) => handleAddReservationTypeChange(e.target.value)}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm text-right"
+          >
+            <option value="daily">يومي</option>
+            <option value="monthly">شهري</option>
+          </select>
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      {/* Price Fields - moved under reservation type */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+          {addReservationType === 'monthly' ? 'السعر باليوم (دج)' : 'السعر باليوم (دج)'}
+        </label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="number"
+            name="pricePerDay"
+            required
+            min="0"
+            onChange={(e) => addReservationType === 'monthly' ? handleAddDailyPriceChange(e.target.value) : undefined}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل السعر باليوم"
+          />
+        </div>
+      </div>
+      
+      {addReservationType === 'monthly' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+            السعر بالشهر (دج)
+            <span className="text-xs text-gray-500 mr-2">(بالسعر اليومي × 30 يوم - بالتقريب)</span>
+            {addMonthlyPrice && (
+              <span className="text-xs text-blue-600 mr-2 block">
+                القيمة الحقيقية: {calculateDailyFromMonthly(addMonthlyPrice)} يومي
+              </span>
+            )}
+          </label>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <input
+              type="number"
+              name="monthlyPrice"
+              value={addMonthlyPrice}
+              onChange={(e) => handleAddMonthlyPriceChange(e.target.value)}
+              min="0"
+              className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+              placeholder="أدخل السعر بالشهر"
+            />
+          </div>
+        </div>
+      )}
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+          {addReservationType === 'monthly' ? 'السعر قبل الخصم باليوم (دج) (اختياري)' : 'السعر قبل الخصم باليوم (دج) (اختياري)'}
+          {addReservationType === 'monthly' && addMonthlyDiscountPrice && (
+            <span className="text-xs text-blue-600 mr-2 block">
+              القيمة الحقيقية: {calculateDailyFromMonthly(addMonthlyDiscountPrice)} يومي
+            </span>
+          )}
+        </label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="number"
+            name="priceBeforeDiscountPerDay"
+            min="0"
+            onChange={(e) => addReservationType === 'monthly' ? handleAddDailyDiscountPriceChange(e.target.value) : undefined}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل السعر قبل الخصم"
+          />
+        </div>
+      </div>
+      
+      {addReservationType === 'monthly' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+            السعر قبل الخصم بالشهر (دج) (اختياري)
+            <span className="text-xs text-gray-500 mr-2">(بالسعر اليومي × 30 يوم - بالتقريب)</span>
+            {addMonthlyDiscountPrice && (
+              <span className="text-xs text-blue-600 mr-2 block">
+                القيمة الحقيقية: {calculateDailyFromMonthly(addMonthlyDiscountPrice)} يومي
+              </span>
+            )}
+          </label>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <input
+              type="number"
+              name="monthlyDiscountPrice"
+              value={addMonthlyDiscountPrice}
+              onChange={(e) => handleAddMonthlyDiscountPriceChange(e.target.value)}
+              min="0"
+              className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+              placeholder="أدخل السعر قبل الخصم بالشهر"
+            />
+          </div>
+        </div>
+      )}
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">السعة (عدد الأشخاص)</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="number"
+            name="capacity"
+            min="1"
+            max="50"
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل عدد الأشخاص"
+          />
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">الفئة المستهدفة</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <select
+            name="targetAudience"
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm text-right"
+          >
+            <option value="both">الجميع</option>
+            <option value="family">عائلات</option>
+            <option value="normal">أفراد</option>
+          </select>
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
         </div>
@@ -5133,41 +5478,26 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
       </div>
       
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">السعر باليوم (دج)</label>
-        <div className="relative group">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          <input
-            type="number"
-            name="pricePerDay"
-            required
-            min="0"
-            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
-            placeholder="أدخل السعر باليوم"
-          />
-        </div>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">روابط الصور</label>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">الصور</label>
         <div className="space-y-3">
           {/* Input field and add button */}
           <div className="flex gap-2">
-<input
-  type="url"
-  value={currentImageLink}
-  onChange={(e) => setCurrentImageLink(e.target.value)}
-  onKeyPress={handleImageLinkKeyPress}
-  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-  placeholder="أدخل رابط الصورة"
-/>
-<button
-  type="button"
-  onClick={addImageLink}
-  disabled={!currentImageLink.trim()}
-  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
->
-  إضافة
-</button>
+            <input
+              type="text"
+              value={currentImageLink}
+              onChange={(e) => setCurrentImageLink(e.target.value)}
+              onKeyPress={handleImageLinkKeyPress}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="أدخل رابط الصورة"
+            />
+            <button
+              type="button"
+              onClick={addImageLink}
+              disabled={!currentImageLink.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              إضافة
+            </button>
           </div>
           
           {/* Image links tags */}
@@ -5261,6 +5591,7 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
 setShowAddPropertyModal(false);
 setImageLinks([]);
 setCurrentImageLink('');
+setAddMapUrl('');
 setPropertyError(null);
 setAddPropertyAvailable(true);
             }}
@@ -5307,7 +5638,8 @@ setAddPropertyAvailable(true);
     className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 w-full max-w-5xl lg:max-w-4xl md:max-w-3xl sm:max-w-full mx-4 relative z-[100000] max-h-[90vh] sm:max-h-[95vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300"
     style={{
       scrollbarWidth: 'thin',
-      scrollbarColor: '#cbd5e1 #f1f5f9'
+      scrollbarColor: '#cbd5e1 #f1f5f9',
+      direction: 'rtl'
     }}
     onClick={(e) => e.stopPropagation()}
   >
@@ -5376,6 +5708,11 @@ setAddPropertyAvailable(true);
           description: formData.get('description') as string,
           propertyType: formData.get('propertyType') as string,
           pricePerDay: Number(formData.get('pricePerDay')),
+          reserveTheProperty: formData.get('reserveTheProperty') as string || editingProperty?.reserveTheProperty || 'daily',
+          locationGoogleMapLink: formData.get('locationGoogleMapLink') as string || editingProperty?.locationGoogleMapLink || '',
+          priceBeforeDiscountPerDay: formData.get('priceBeforeDiscountPerDay') ? Number(formData.get('priceBeforeDiscountPerDay')) : editingProperty?.priceBeforeDiscountPerDay,
+          capacity: formData.get('capacity') ? Number(formData.get('capacity')) : editingProperty?.capacity,
+          targetAudience: formData.get('targetAudience') as string || editingProperty?.targetAudience || 'both',
           images: imageLinks,
           wilayaId: editWilayaId,
           officeId: editOfficeId,
@@ -5432,6 +5769,176 @@ setAddPropertyAvailable(true);
             <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">رابط خرائط جوجل (اختياري)</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="url"
+            name="locationGoogleMapLink"
+            value={editMapUrl}
+            onChange={(e) => setEditMapUrl(e.target.value)}
+            defaultValue={editingProperty?.locationGoogleMapLink || ''}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل رابط خرائط جوجل"
+          />
+        </div>
+        <GoogleMapPreview mapUrl={editMapUrl} className="mt-3" onLocationSelect={handleLocationSelect} />
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">نوع الحجز</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <select
+            name="reserveTheProperty"
+            value={editReservationType}
+            onChange={(e) => handleEditReservationTypeChange(e.target.value)}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm text-right"
+          >
+            <option value="daily">يومي</option>
+            <option value="monthly">شهري</option>
+          </select>
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      {/* Price Fields - moved under reservation type */}
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+          {editReservationType === 'monthly' ? 'السعر باليوم (دج)' : 'السعر باليوم (دج)'}
+        </label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="number"
+            name="pricePerDay"
+            required
+            min="0"
+            defaultValue={editingProperty?.pricePerDay || ''}
+            onChange={(e) => editReservationType === 'monthly' ? handleEditDailyPriceChange(e.target.value) : undefined}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل السعر باليوم"
+          />
+        </div>
+      </div>
+      
+      {editReservationType === 'monthly' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+            السعر بالشهر (دج)
+            <span className="text-xs text-gray-500 mr-2">(بالسعر اليومي × 30 يوم - بالتقريب)</span>
+            {editMonthlyPrice && (
+              <span className="text-xs text-blue-600 mr-2 block">
+                القيمة الحقيقية: {calculateDailyFromMonthly(editMonthlyPrice)} يومي
+              </span>
+            )}
+          </label>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <input
+              type="number"
+              name="monthlyPrice"
+              value={editMonthlyPrice}
+              onChange={(e) => handleEditMonthlyPriceChange(e.target.value)}
+              min="0"
+              className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+              placeholder="أدخل السعر بالشهر"
+            />
+          </div>
+        </div>
+      )}
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+          {editReservationType === 'monthly' ? 'السعر قبل الخصم باليوم (دج) (اختياري)' : 'السعر قبل الخصم باليوم (دج) (اختياري)'}
+          {editReservationType === 'monthly' && editMonthlyDiscountPrice && (
+            <span className="text-xs text-blue-600 mr-2 block">
+              القيمة الحقيقية: {calculateDailyFromMonthly(editMonthlyDiscountPrice)} يومي
+            </span>
+          )}
+        </label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="number"
+            name="priceBeforeDiscountPerDay"
+            min="0"
+            defaultValue={editingProperty?.priceBeforeDiscountPerDay || ''}
+            onChange={(e) => editReservationType === 'monthly' ? handleEditDailyDiscountPriceChange(e.target.value) : undefined}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل السعر قبل الخصم"
+          />
+        </div>
+      </div>
+      
+      {editReservationType === 'monthly' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-2 text-right">
+            السعر قبل الخصم بالشهر (دج) (اختياري)
+            <span className="text-xs text-gray-500 mr-2">(بالسعر اليومي × 30 يوم - بالتقريب)</span>
+            {editMonthlyDiscountPrice && (
+              <span className="text-xs text-blue-600 mr-2 block">
+                القيمة الحقيقية: {calculateDailyFromMonthly(editMonthlyDiscountPrice)} يومي
+              </span>
+            )}
+          </label>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <input
+              type="number"
+              name="monthlyDiscountPrice"
+              value={editMonthlyDiscountPrice}
+              onChange={(e) => handleEditMonthlyDiscountPriceChange(e.target.value)}
+              min="0"
+              className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+              placeholder="أدخل السعر قبل الخصم بالشهر"
+            />
+          </div>
+        </div>
+      )}
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">السعة (عدد الأشخاص)</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <input
+            type="number"
+            name="capacity"
+            min="1"
+            max="50"
+            defaultValue={editingProperty?.capacity || ''}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+            placeholder="أدخل عدد الأشخاص"
+          />
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-xs font-medium text-gray-700 mb-2 text-right">الفئة المستهدفة</label>
+        <div className="relative group">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+          <select
+            name="targetAudience"
+            defaultValue={editingProperty?.targetAudience || 'both'}
+            className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm text-right"
+          >
+            <option value="both">الجميع</option>
+            <option value="family">عائلات</option>
+            <option value="normal">أفراد</option>
+          </select>
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
         </div>
@@ -5513,19 +6020,6 @@ setAddPropertyAvailable(true);
         }`}>
           {editPropertyAvailable ? 'متاح' : 'غير متاح'}
         </span>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">السعر باليوم (دج)</label>
-        <input
-          type="number"
-          name="pricePerDay"
-          required
-          min="0"
-          defaultValue={editingProperty?.pricePerDay || ''}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="أدخل السعر باليوم"
-        />
       </div>
       
       <div>
@@ -5624,6 +6118,7 @@ setImageLinks([]);
 setCurrentImageLink('');
 setEditWilayaId('');
 setEditOfficeId('');
+setEditMapUrl('');
 setPropertyError(null);
 setEditPropertyAvailable(true);
             }}
