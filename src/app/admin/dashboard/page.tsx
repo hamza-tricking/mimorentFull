@@ -374,8 +374,6 @@ export default function Dashboard() {
   const [adminUser, setAdminUser] = useState<any>(null);
 
   // Action loading states for admin dashboard
-  const [isMakingAvailable, setIsMakingAvailable] = useState(false);
-  const [isValidatingAction, setIsValidatingAction] = useState(false);
 
   // Get admin user data from localStorage
   useEffect(() => {
@@ -472,13 +470,7 @@ return true;
     name: string | null;
   }>({ type: null, id: null, name: null });
 
-  // Make property available confirmation modal state
-  const [makeAvailableConfirmation, setMakeAvailableConfirmation] = useState<{
-    propertyId: string | null;
-    propertyTitle: string | null;
-    reservation: any | null;
-  }>({ propertyId: null, propertyTitle: null, reservation: null });
-
+  
   // Contract modal state
   const [showContractModal, setShowContractModal] = useState(false);
 
@@ -836,56 +828,6 @@ return true;
 
     return () => clearInterval(interval);
   }, [authChecked, properties, addToast]);
-
-  // Validation functions for admin dashboard
-  const validatePropertyAction = async (propertyId: string, action: 'reserve' | 'edit' | 'makeAvailable') => {
-    try {
-      setIsValidatingAction(true);
-      
-      // Refresh properties to get latest data
-      await fetchProperties();
-      await fetchReservations();
-      
-      // Find the current property state
-      const currentProperty = properties.find(p => p._id === propertyId);
-      
-      if (!currentProperty) {
-        addToast('العقار غير موجود', 'error');
-        return false;
-      }
-
-      switch (action) {
-        case 'reserve':
-          if (currentProperty.isReserved || !currentProperty.available) {
-            addToast('العقار غير متاح للحجز حاليًا', 'error');
-            return false;
-          }
-          break;
-        
-        case 'edit':
-          if (!currentProperty.isReserved) {
-            addToast('لا يوجد حجز نشط لهذا العقار للتعديل', 'error');
-            return false;
-          }
-          break;
-        
-        case 'makeAvailable':
-          if (!currentProperty.isReserved) {
-            addToast('العقار متاح بالفعل', 'error');
-            return false;
-          }
-          break;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Error validating property action:', error);
-      addToast('حدث خطأ أثناء التحقق', 'error');
-      return false;
-    } finally {
-      setIsValidatingAction(false);
-    }
-  };
 
   // Property CRUD operations
   const handleAddProperty = async (propertyData: { 
@@ -1734,7 +1676,8 @@ setOrders(orders);
             </p>
           </div>
         )}
-        
+                {/* under calendary resrvation  */}
+
         {propertyReservations && propertyReservations.length > 0 && (
           <div className="mt-2 sm:mt-3 space-y-1">
             <p className="text-xs text-white/80 font-medium mb-1">فترات الحجز:</p>
@@ -2603,94 +2546,8 @@ return err.msg || JSON.stringify(err);
     setShowAddModal(true);
   };
 
-  const handleMakePropertyAvailable = async (propertyId: string, propertyTitle: string) => {
-    // Validate property can be made available
-    const isValid = await validatePropertyAction(propertyId, 'makeAvailable');
-    if (!isValid) return;
-
-    // After validation and refresh, check the property state again
-    const updatedProperty = properties.find(p => p._id === propertyId);
-    
-    // Double-check if property is still reserved after refresh
-    if (!updatedProperty || !updatedProperty.isReserved) {
-      addToast('العقار متاح بالفعل', 'info');
-      return;
-    }
-
-    // Find the active reservation for this property
-    const activeReservation = reservations.find((r: any) => {
-      const reservationPropertyId = typeof r.propertyId === 'string' 
-        ? r.propertyId 
-        : r.propertyId?._id || r.propertyId.id;
-      return reservationPropertyId === propertyId && 
-             ['pending', 'confirmed', 'approved'].includes(r.status);
-    });
-    
-    // Show confirmation modal with reservation details
-    setMakeAvailableConfirmation({
-      propertyId,
-      propertyTitle,
-      reservation: activeReservation
-    });
-  };
-
-  const confirmMakePropertyAvailable = async () => {
-    const { propertyId } = makeAvailableConfirmation;
-    if (!propertyId) return;
-
-    try {
-      setIsMakingAvailable(true);
-      const token = localStorage.getItem('token');
-      
-      // Optimistic update - update UI immediately
-      setProperties(prevProperties => 
-        prevProperties.map(property => 
-          property._id === propertyId 
-? { ...property, available: true, isReserved: false }
-: property
-        )
-      );
-      
-      // Close modal
-      setMakeAvailableConfirmation({ propertyId: null, propertyTitle: null, reservation: null });
-      
-      // Update property status to available (keep reservation for history)
-      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/properties/${propertyId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          available: true,
-          isReserved: false
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        // Show success toast
-        addToast('تم جعل العقار متاحًا بنجاح', 'success');
-        
-        // Refresh data to ensure consistency
-        await fetchProperties();
-        await fetchReservations();
-      } else {
-        // Revert optimistic update on failure
-        await fetchProperties();
-        addToast('فشل تحديث حالة العقار: ' + (data.message || 'خطأ غير معروف'), 'error');
-      }
-    } catch (error) {
-      console.error('Error making property available:', error);
-      // Revert optimistic update on error
-      await fetchProperties();
-      addToast('حدث خطأ. يرجى المحاولة مرة أخرى.', 'error');
-    } finally {
-      setIsMakingAvailable(false);
-    }
-  };
-
+  
+  
   const handleEditWilaya = async (wilayaData: { name: string; image?: string }) => {
     try {
       
@@ -4291,131 +4148,7 @@ handleDeleteUser(deleteConfirmation.id!);
 </div>
           )}
 
-          {/* Make Property Available Confirmation Modal */}
-          {makeAvailableConfirmation.propertyId && (
-<div 
-  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6"
-  onClick={() => setMakeAvailableConfirmation({ propertyId: null, propertyTitle: null, reservation: null })}
->
-   <div 
-             className="bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000] max-h-[90vh] overflow-y-auto"
-             onClick={(e) => e.stopPropagation()}
-           >
-  
-             
-             <h3 className="text-xl font-bold text-white mb-4">
-               جعل العقار متاحًا
-                          <div className="flex items-center mb-4">
-               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                 <Home className="w-6 h-6 text-green-600" />
-               </div>
-             </div>
-             </h3>
-             
-    
-    <p className="text-white mb-4">
-      تأكد من معلومات الحجز قبل جعل العقار متاح
-    </p>
-    
-    {/* Reservation Details */}
-    {makeAvailableConfirmation.reservation && (
-      <div className="bg-gray-50 rounded-lg p-4 sm:p-6 mb-6 space-y-3">
-        <div className="flex justify-between items-center">
-          <span className="text-gray-700 font-medium">السعر الإجمالي (دج)</span>
-          <span className="text-gray-900 font-bold">
-            {makeAvailableConfirmation.reservation.totalPrice?.toLocaleString('ar-DZ') || 0}
-          </span>
-        </div>
-        
-        <div className="flex justify-between items-center">
-          <span className="text-gray-700 font-medium">المبلغ المدفوع (دج)</span>
-          <span className="text-gray-900 font-bold">
-            {makeAvailableConfirmation.reservation.paidAmount?.toLocaleString('ar-DZ') || 0}
-          </span>
-        </div>
-        
-        <div className="flex justify-between items-center">
-          <span className="text-gray-700 font-medium">المبلغ المتبقي (دج)</span>
-          <span className="text-gray-900 font-bold">
-            {makeAvailableConfirmation.reservation.remainingAmount?.toLocaleString('ar-DZ') || 
-             (makeAvailableConfirmation.reservation.totalPrice - makeAvailableConfirmation.reservation.paidAmount)?.toLocaleString('ar-DZ') || 0}
-          </span>
-        </div>
-        
-        <div className="border-t pt-3">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-700 font-medium">حالة الدفع</span>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-              makeAvailableConfirmation.reservation.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
-              makeAvailableConfirmation.reservation.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
-              {makeAvailableConfirmation.reservation.paymentStatus === 'paid' ? 'مدفوع بالكامل' :
-               makeAvailableConfirmation.reservation.paymentStatus === 'partial' ? 'مدفوع جزئياً' :
-               'غير مدفوع'}
-            </span>
-          </div>
           
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 font-medium">حالة الحجز</span>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-              makeAvailableConfirmation.reservation.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-              makeAvailableConfirmation.reservation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-              makeAvailableConfirmation.reservation.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
-              {makeAvailableConfirmation.reservation.status === 'confirmed' ? 'مؤكد' :
-               makeAvailableConfirmation.reservation.status === 'pending' ? 'معلق' :
-               makeAvailableConfirmation.reservation.status === 'cancelled' ? 'ملغي' :
-               makeAvailableConfirmation.reservation.status}
-            </span>
-          </div>
-        </div>
-        
-        <div className="border-t pt-3">
-          <div className="text-sm text-gray-600">
-            <div className="mb-1">
-              <span className="font-medium">العميل:</span> {makeAvailableConfirmation.reservation.customerName}
-            </div>
-            <div className="mb-1">
-              <span className="font-medium">الهاتف:</span> {makeAvailableConfirmation.reservation.customerPhone}
-            </div>
-            <div>
-              <span className="font-medium">الفترة:</span> {
-                new Date(makeAvailableConfirmation.reservation.startDate).toLocaleDateString('ar-DZ')
-              } - {
-                new Date(makeAvailableConfirmation.reservation.endDate).toLocaleDateString('ar-DZ')
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
-    
-    <p className="text-white text-sm mb-6">
-      هل أنت متأكد من أنك تريد جعل العقار "{makeAvailableConfirmation.propertyTitle || ''}" متاحًا؟
-    </p>
-    
-    <div className="flex space-x-3 space-x-reverse">
-      <button
-        type="button"
-        onClick={() => setMakeAvailableConfirmation({ propertyId: null, propertyTitle: null, reservation: null })}
-        className="flex-1 px-4 py-2 border border-gray-300 text-white rounded-lg  hover:text-black cursor-pointer transition-colors hover:bg-white"
-      >
-        إلغاء
-      </button>
-      <button
-        type="button"
-        onClick={confirmMakePropertyAvailable}
-        className="flex-1 cursor-pointer px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-      >
-        تأكيد
-      </button>
-    </div>
-  </div>
-</div>
-          )}
-
           {/* Edit Office Modal */}
           {showEditOfficeModal && editingOffice && (
 <div 
@@ -4803,26 +4536,7 @@ return property.officeId?._id === selectedOffice ||
       </button>
     </div>
     
-    {/* Make Available Button */}
-    {property.isReserved && (
-      <button
-        onClick={() => handleMakePropertyAvailable(property._id, property.title)}
-        disabled={isValidatingAction || isMakingAvailable}
-        className="w-full px-3 py-2 bg-gradient-to-br from-[#ff8844] to-[#cc6600] text-white rounded-lg hover:from-[#ff7733] hover:to-[#aa5500] transition-all text-sm mt-2 border-2 border-white/60 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-      >
-        {(isValidatingAction || isMakingAvailable) ? (
-          <>
-            <div className="w-4 h-4 border-2 border-white/30 rounded-full animate-spin">
-              <div className="w-4 h-4 border-2 border-transparent border-t-white rounded-full"></div>
-            </div>
-            جاري التحقق...
-          </>
-        ) : (
-          'جعل العقار متاحا'
-        )}
-      </button>
-    )}
-  </div>
+      </div>
 </div>
           ))}
       </div>
@@ -6291,7 +6005,7 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
         )}
       </div>
 
-      {/* Properties Grid */}
+      {/* Properties Grid principal cards off reservation  */}
       <div dir='rtl' className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2  ">
         {properties
           .filter((property: any) => {
@@ -6482,23 +6196,7 @@ openEditReservationModal(reservation);
         >
           عرض الحجوزات الأخرى
         </button>
-        <button
-          onClick={() => handleMakePropertyAvailable(property._id, property.title)}
-          disabled={isValidatingAction || isMakingAvailable}
-          className="w-full px-4 py-2 bg-gradient-to-br from-[#ff8844] to-[#cc6600] text-white rounded-lg hover:from-[#ff7733] hover:to-[#aa5500] transition-all cursor-pointer border-2 border-white/60 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {(isValidatingAction || isMakingAvailable) ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 rounded-full animate-spin">
-                <div className="w-4 h-4 border-2 border-transparent border-t-white rounded-full"></div>
               </div>
-              جاري التحقق...
-            </>
-          ) : (
-            'جعل العقار متاحا'
-          )}
-        </button>
-      </div>
     )}
     
     {/* Expandable Calendar Section */}
