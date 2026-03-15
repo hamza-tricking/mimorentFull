@@ -1690,9 +1690,10 @@ setOrders(orders);
                   className={`p-1.5 sm:p-2 ${colors.light} rounded border ${colors.lightBorder} cursor-pointer hover:opacity-80 transition-opacity`}
                   onClick={() => {
                     setSelectedPropertyForReservation(propertyId);
-                    setSelectedReservationId(reservation._id);
-                    setEditingReservation(reservation);
-                    setShowEditReservationModal(true);
+                    const fullReservation = reservations.find((r: any) => r._id === reservation._id);
+                    if (fullReservation) {
+                      openEditReservationModal(fullReservation);
+                    }
                   }}
                   title="اضغط للتعديل"
                 >
@@ -6015,8 +6016,14 @@ return property.officeId?._id === selectedOffice ||
        property.officeId?.id === selectedOffice ||
        property.officeId?.toString() === selectedOffice;
           })
-          .map((property: any) => (
-<div key={property._id} className="bg-white/10 backdrop-blur-md rounded-xl overflow-hidden border-2 border-white/40">
+          .map((property: any) => {
+            const isDisabled = !property.available;
+            return (
+<div key={property._id} className={`bg-white/10 backdrop-blur-md rounded-xl overflow-hidden border-2 border-white/40 transition-all duration-300 ${
+  isDisabled 
+    ? 'opacity-50 grayscale pointer-events-none' 
+    : 'hover:bg-white/15'
+}`}>
   {/* Property Image */}
   <div className="relative w-full aspect-[4/2] bg-gray-900 overflow-hidden">
     {property.images && property.images.length > 0 ? (
@@ -6202,8 +6209,13 @@ openEditReservationModal(reservation);
     {/* Expandable Calendar Section */}
     <div className="mt-4 border-t border-white/20">
       <button
-        onClick={() => togglePropertyCard(property._id)}
-        className="w-full py-2 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+        onClick={() => !isDisabled && togglePropertyCard(property._id)}
+        disabled={isDisabled}
+        className={`w-full py-2 flex items-center justify-center transition-colors ${
+          isDisabled 
+            ? 'text-gray-400 cursor-not-allowed' 
+            : 'text-white/60 hover:text-white cursor-pointer'
+        }`}
       >
         <span className="text-sm">عرض التقويم</span>
         <ChevronDown 
@@ -6213,7 +6225,7 @@ openEditReservationModal(reservation);
         />
       </button>
       
-      {expandedPropertyCards.has(property._id) && (
+      {expandedPropertyCards.has(property._id) && !isDisabled && (
         <div className="mt-4 animate-in slide-in-from-top duration-200">
           <PropertyCalendar propertyId={property._id} />
         </div>
@@ -6221,7 +6233,8 @@ openEditReservationModal(reservation);
     </div>
   </div>
 </div>
-          ))}
+            );
+          })}
       </div>
 
       {properties.filter((property: any) => {
