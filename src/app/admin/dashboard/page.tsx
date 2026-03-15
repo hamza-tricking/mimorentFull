@@ -423,6 +423,7 @@ export default function Dashboard() {
     totalPrice: '',
     paidAmount: '',
     remainingAmount: '',
+    paymentStatus: 'pending',
     status: 'pending',
     isMarried: false,
     numberOfPeople: '',
@@ -1294,6 +1295,7 @@ setOrders(orders);
                 totalPrice: '0',
                 paidAmount: '0',
                 remainingAmount: '0',
+                paymentStatus: 'pending',
                 status: 'confirmed',
                 isMarried: isFamilyProperty ? true : false,
                 numberOfPeople: isFamilyProperty ? '1' : '1',
@@ -2103,6 +2105,7 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
           totalPrice: '',
           paidAmount: '',
           remainingAmount: '',
+          paymentStatus: 'pending',
           status: 'pending',
           isMarried: false,
           numberOfPeople: '',
@@ -2157,6 +2160,7 @@ return err.msg || JSON.stringify(err);
       totalPrice: '',
       paidAmount: '',
       remainingAmount: '',
+      paymentStatus: 'pending',
       status: 'pending',
       isMarried: isFamilyProperty ? true : false, // Auto-set to married for family properties
       numberOfPeople: '',
@@ -7034,6 +7038,10 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
   const remainingAmount = Math.max(0, totalPrice - parseFloat(paidAmountInput.value));
   remainingAmountInput.value = remainingAmount.toString();
 }
+setAddReservationForm(prev => ({
+  ...prev,
+  paymentStatus: newPaymentStatus
+}));
           }}
           className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
           style={{ cursor: 'not-allowed' }}
@@ -7629,7 +7637,7 @@ className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none
                 if (dateChangeSuggestion && editingReservation) {
                   // Update the editing reservation notes
                   const updatedNotes = [...(editingReservation.notes || []), dateChangeSuggestion];
-                  setEditingReservation(prev => ({
+                  setEditingReservation((prev: any) => ({
                     ...prev,
                     notes: updatedNotes
                   }));
@@ -7900,7 +7908,6 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
               <span
                 key={index}
                 className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
-                className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
               >
                 {note}
                 <button

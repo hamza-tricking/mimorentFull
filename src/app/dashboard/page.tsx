@@ -2883,11 +2883,7 @@ export default function EmployerDashboard() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {(() => {
-                    const property = properties.find((p: any) => p._id === selectedProperty._id);
-                    const isFamilyProperty = property?.targetAudience === 'family';
-                    return isFamilyProperty ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف';
-                  })()}
+                  {formData.isMarried ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف'}
                 </label>
                 <div className="space-y-2">
                   {formData.identityImages.map((image, index) => (
