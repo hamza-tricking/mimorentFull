@@ -16,6 +16,10 @@ interface Property {
   images: string[];
   available: boolean;
   isReserved: boolean;
+  location?: string;
+  propertyType?: string;
+  reserveTheProperty?: string;
+  targetAudience?: string;
   wilayaId: {
     _id: string;
     name: string;
@@ -28,7 +32,7 @@ interface Property {
 
 interface Reservation {
   _id: string;
-  propertyId: string;
+  propertyId: string | { _id: string; id?: string };
   customerName: string;
   customerPhone: string;
   startDate: string;
@@ -44,6 +48,10 @@ interface Reservation {
     lastName: string;
     username: string;
   };
+  isMarried: boolean;
+  numberOfPeople: string;
+  identityImages: string[];
+  notes: string[];
 }
 
 interface User {
@@ -102,15 +110,7 @@ export default function EmployerDashboard() {
   const [currentBookingOrder, setCurrentBookingOrder] = useState<any | null>(null);
   const [isSubmittingReservation, setIsSubmittingReservation] = useState(false);
   
-  // Make property available confirmation modal state
-  const [makeAvailableConfirmation, setMakeAvailableConfirmation] = useState<{
-    propertyId: string | null;
-    propertyTitle: string | null;
-    reservation: any | null;
-  }>({ propertyId: null, propertyTitle: null, reservation: null });
-  
   // Action loading states
-  const [isMakingAvailable, setIsMakingAvailable] = useState(false);
   const [isValidatingAction, setIsValidatingAction] = useState(false);
   
   // Order management state
@@ -144,6 +144,17 @@ export default function EmployerDashboard() {
     contractDate: ''
   });
 
+  // Calendar and expanded cards state
+  const [expandedPropertyCards, setExpandedPropertyCards] = useState<Set<string>>(new Set());
+  const [preSelectedDates, setPreSelectedDates] = useState<{ startDate: Date; endDate: Date } | null>(null);
+  const [showReservationsListModal, setShowReservationsListModal] = useState(false);
+  const [selectedPropertyForReservationsList, setSelectedPropertyForReservationsList] = useState<string>('');
+  const [clearReservationsConfirmation, setClearReservationsConfirmation] = useState<{
+    propertyId: string | null;
+    propertyTitle: string | null;
+    reservationCount: number | null;
+  }>({ propertyId: null, propertyTitle: null, reservationCount: null });
+
   // Form states
   const [formData, setFormData] = useState({
     customerName: '',
@@ -154,10 +165,123 @@ export default function EmployerDashboard() {
     paidAmount: 0,
     remainingAmount: 0,
     paymentStatus: 'pending' as 'pending' | 'partial' | 'paid',
-    status: 'pending' as 'pending' | 'confirmed' | 'cancelled' | 'completed'
+    status: 'pending' as 'pending' | 'confirmed' | 'cancelled' | 'completed',
+    isMarried: false,
+    numberOfPeople: '1',
+    identityImages: [''],
+    notes: [] as string[],
+    currentNote: ''
   });
 
-  // Get user data from localStorage
+  // State for tracking original dates and smart suggestions
+  const [originalDates, setOriginalDates] = useState<{
+    startDate: string;
+    endDate: string;
+  } | null>(null);
+  const [dateChangeSuggestion, setDateChangeSuggestion] = useState<string | null>(null);
+
+  // Function to generate date change suggestion
+  const generateDateChangeSuggestion = (oldStartDate: string, oldEndDate: string, newStartDate: string, newEndDate: string): string | null => {
+    const oldStart = new Date(oldStartDate);
+    const oldEnd = new Date(oldEndDate);
+    const newStart = new Date(newStartDate);
+    const newEnd = new Date(newEndDate);
+    
+    const oldDays = Math.ceil((oldEnd.getTime() - oldStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const newDays = Math.ceil((newEnd.getTime() - newStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const dayDifference = newDays - oldDays;
+    
+    // Only generate suggestion if there's an actual change in days
+    if (dayDifference === 0) return null;
+    
+    const action = dayDifference > 0 ? 'إضافة' : 'إزالة';
+    const daysCount = Math.abs(dayDifference);
+    
+    return `العميل يريد ${action} ${daysCount} ${daysCount === 1 ? 'يوم' : 'أيام'} من الحجز. الفترة السابقة: ${formatDate(oldStartDate)} - ${formatDate(oldEndDate)}. الفترة الجديدة: ${formatDate(newStartDate)} - ${formatDate(newEndDate)}.`;
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ar-DZ', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  };
+
+  // Validation function for monthly reservation dates
+  const validateMonthlyReservation = (startDate: Date, endDate: Date, propertyId: string): { isValid: boolean; message?: string } => {
+    const property = properties.find((p: any) => p._id === propertyId);
+    
+    // If property is daily, no monthly validation needed
+    if (!property || property.reserveTheProperty !== 'monthly') {
+      return { isValid: true };
+    }
+    
+    // For monthly reservations, check if end date is exactly one or more months after start date
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Calculate the difference in months
+    const monthsDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    const dayDiff = end.getDate() - start.getDate();
+    
+    // Check if it's exactly at least one month
+    if (monthsDiff < 1) {
+      return { 
+        isValid: false, 
+        message: 'فترة الحجز غير صحيحة. يجب أن يكون تاريخ الانتهاء بعد شهر واحد على الأقل من تاريخ البدء للحجوزات الشهرية.' 
+      };
+    }
+    
+    // For exactly one month, day should be the same
+    if (monthsDiff === 1 && dayDiff !== 0) {
+      return { 
+        isValid: false, 
+        message: 'فترة الحجز غير صحيحة. للحجز الشهري، يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر التالي (مثال: 03/15/2026 → 04/15/2026).' 
+      };
+    }
+    
+    // For multiple months, day should be the same
+    if (monthsDiff > 1 && dayDiff !== 0) {
+      return { 
+        isValid: false, 
+        message: 'فترة الحجز غير صحيحة. للحجز الشهري، يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر المناسب (مثال: 03/15/2026 → 06/15/2026 لمدة 3 أشهر).' 
+      };
+    }
+    
+    return { isValid: true };
+  };
+
+  // Function to calculate end date for monthly reservations
+  const calculateMonthlyEndDate = (startDate: string, months: number = 1): string => {
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+    
+    // Handle edge cases for end of month (e.g., Jan 31 → Feb 28/29)
+    if (start.getDate() !== end.getDate()) {
+      end.setDate(0); // Set to last day of previous month
+    }
+    
+    return end.toISOString().split('T')[0];
+  };
+
+  // Function to calculate total price based on property price and reservation dates
+  const calculateReservationPrice = (startDate: string, endDate: string, propertyId: string): number => {
+    const property = properties.find((p: any) => p._id === propertyId);
+    if (!property) return 0;
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (property.reserveTheProperty === 'daily') {
+      // Calculate days difference (including both start and end dates)
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      return daysDiff * property.pricePerDay;
+    } else {
+      // For monthly reservations, calculate months difference
+      const monthsDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+      return monthsDiff * property.pricePerDay;
+    }
+  };
   useEffect(() => {
     const userData = localStorage.getItem('user');
     
@@ -209,6 +333,18 @@ export default function EmployerDashboard() {
       localStorage.setItem('employerDashboardTab', activeTab);
     }
   }, [activeTab]);
+
+  const togglePropertyCard = (propertyId: string) => {
+    setExpandedPropertyCards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(propertyId)) {
+        newSet.delete(propertyId);
+      } else {
+        newSet.add(propertyId);
+      }
+      return newSet;
+    });
+  };
 
   // Real-time property status checking
   useEffect(() => {
@@ -275,8 +411,68 @@ export default function EmployerDashboard() {
     };
   }, []);
 
+  // Populate form data when editingReservation changes
+  useEffect(() => {
+    if (editingReservation && properties.length > 0) {
+      console.log('🔄 Populating form data for reservation:', editingReservation._id);
+      
+      // Find the property for this reservation
+      const propertyId = typeof editingReservation.propertyId === 'string' 
+        ? editingReservation.propertyId 
+        : editingReservation.propertyId?._id || (editingReservation.propertyId as any)?.id || '';
+      
+      const property = properties.find((p: any) => p._id === propertyId);
+      
+      if (property) {
+        console.log('🏠 Found property:', property.title);
+        
+        // Safe date conversion
+        const safeDateToISOString = (dateString: string | undefined) => {
+          if (!dateString) return new Date().toISOString().split('T')[0];
+          
+          try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+              return new Date().toISOString().split('T')[0];
+            }
+            return date.toISOString().split('T')[0];
+          } catch (error) {
+            return new Date().toISOString().split('T')[0];
+          }
+        };
+        
+        const formDataToSet = {
+          customerName: editingReservation.customerName || '',
+          customerPhone: editingReservation.customerPhone || '',
+          startDate: safeDateToISOString(editingReservation.startDate),
+          endDate: safeDateToISOString(editingReservation.endDate),
+          totalPrice: editingReservation.totalPrice || 0,
+          paidAmount: editingReservation.paidAmount || 0,
+          remainingAmount: editingReservation.remainingAmount || 0,
+          paymentStatus: editingReservation.paymentStatus || 'pending',
+          status: editingReservation.status || 'pending',
+          isMarried: editingReservation.isMarried || false,
+          numberOfPeople: editingReservation.numberOfPeople?.toString() || '1',
+          identityImages: editingReservation.identityImages || [''],
+          notes: editingReservation.notes || [],
+          currentNote: ''
+        };
+        
+        // Store original dates for change detection
+        setOriginalDates({
+          startDate: safeDateToISOString(editingReservation.startDate),
+          endDate: safeDateToISOString(editingReservation.endDate)
+        });
+        setDateChangeSuggestion(null); // Reset suggestion when opening edit modal
+        
+        console.log('📝 Setting form data:', formDataToSet);
+        setFormData(formDataToSet);
+      }
+    }
+  }, [editingReservation, properties]);
+
   // Validation functions
-  const validatePropertyAction = async (propertyId: string, action: 'reserve' | 'edit' | 'makeAvailable') => {
+  const validatePropertyAction = async (propertyId: string, action: 'reserve' | 'edit') => {
     try {
       setIsValidatingAction(true);
       
@@ -303,13 +499,6 @@ export default function EmployerDashboard() {
         case 'edit':
           if (!currentProperty.isReserved) {
             addToast('لا يوجد حجز نشط لهذا العقار للتعديل', 'error');
-            return false;
-          }
-          break;
-        
-        case 'makeAvailable':
-          if (!currentProperty.isReserved) {
-            addToast('العقار متاح بالفعل', 'error');
             return false;
           }
           break;
@@ -379,9 +568,23 @@ export default function EmployerDashboard() {
 
       if (response.ok) {
         const data = await response.json();
-        // Check if data is nested like orders
-        const reservationsArray = Array.isArray(data?.data?.reservations) ? data.data.reservations : 
+        console.log('📥 Received reservations data:', data);
+        
+        // Check if data is nested like admin routes
+        const reservationsArray = Array.isArray(data?.data?.data) ? data.data.data : 
+                                Array.isArray(data?.data?.reservations) ? data.data.reservations : 
                                 Array.isArray(data?.reservations) ? data.reservations : [];
+        
+        console.log('📋 Processed reservations array:', reservationsArray);
+        if (reservationsArray.length > 0) {
+          console.log('🔍 Sample reservation:', {
+            _id: reservationsArray[0]._id,
+            totalPrice: reservationsArray[0].totalPrice,
+            paidAmount: reservationsArray[0].paidAmount,
+            remainingAmount: reservationsArray[0].remainingAmount,
+            propertyId: reservationsArray[0].propertyId
+          });
+        }
         
         // Ensure we always set an array
         setReservations(reservationsArray);
@@ -682,7 +885,12 @@ export default function EmployerDashboard() {
         paidAmount: order.advancePayment || 0,
         remainingAmount: (order.totalPrice || property.pricePerDay || 0) - (order.advancePayment || 0),
         paymentStatus: 'pending' as 'pending' | 'partial' | 'paid',
-        status: 'confirmed' as 'pending' | 'confirmed' | 'cancelled' | 'completed' // Set to confirmed since this is from an approved order
+        status: 'confirmed' as 'pending' | 'confirmed' | 'cancelled' | 'completed', // Set to confirmed since this is from an approved order
+        isMarried: false,
+        numberOfPeople: '1',
+        identityImages: [''],
+        notes: [],
+        currentNote: ''
       });
       
       setReservationError(null);
@@ -711,46 +919,68 @@ export default function EmployerDashboard() {
     return property.isReserved || false;
   };
 
-  const openEditReservationModal = async (property: Property) => {
-    // Validate property has an active reservation to edit
-    const isValid = await validatePropertyAction(property._id, 'edit');
-    if (!isValid) return;
-
-    // After validation and refresh, check the property state again
-    const updatedProperty = properties.find(p => p._id === property._id);
+  const openEditReservationModal = (reservation: any) => {
+    console.log('🎯 Opening edit modal with reservation:', reservation._id);
+    console.log('📝 Reservation data:', {
+      totalPrice: reservation.totalPrice,
+      paidAmount: reservation.paidAmount,
+      remainingAmount: reservation.remainingAmount
+    });
     
-    // Double-check if property is still reserved after refresh
-    if (!updatedProperty || !updatedProperty.isReserved) {
-      addToast('لا يوجد حجز نشط لهذا العقار', 'info');
-      return;
+    // Find and set the property for this reservation
+    const propertyId = typeof reservation.propertyId === 'string' 
+      ? reservation.propertyId 
+      : reservation.propertyId?._id || (reservation.propertyId as any)?.id || '';
+    
+    const property = properties.find((p: any) => p._id === propertyId);
+    if (property) {
+      console.log('🏠 Found property for reservation:', property.title);
+      setSelectedProperty(property);
+    } else {
+      console.log('❌ No property found for reservation, using fallback');
+      // Create a minimal property object to prevent modal from failing
+      setSelectedProperty({
+        _id: propertyId,
+        title: 'عقار',
+        description: '',
+        pricePerDay: 0,
+        images: [],
+        available: true,
+        isReserved: true,
+        wilayaId: { _id: '', name: '' },
+        officeId: { _id: '', name: '' }
+      });
     }
+    
+    setEditingReservation(reservation);
+    setShowReservationModal(true);
+  };
 
-    const reservation = reservations.find((r: any) => {
+  const openEditReservationModalForProperty = async (property: Property) => {
+    console.log('🔍 Looking for reservations for property:', property._id);
+    console.log('📋 Available reservations:', reservations.length);
+    
+    // Find the latest reservation for this property
+    const propertyReservations = reservations.filter((r: any) => {
       const reservationPropertyId = typeof r.propertyId === 'string' 
         ? r.propertyId 
         : r.propertyId?._id || r.propertyId.id;
+      console.log(`🔍 Checking reservation ${r._id}: propertyId = ${reservationPropertyId}, target = ${property._id}`);
       return reservationPropertyId === property._id;
     });
     
-    if (reservation) {
-      // Open edit modal with reservation data
-      setSelectedProperty(property);
-      setFormData({
-        customerName: reservation.customerName,
-        customerPhone: reservation.customerPhone,
-        startDate: new Date(reservation.startDate).toISOString().split('T')[0],
-        endDate: new Date(reservation.endDate).toISOString().split('T')[0],
-        totalPrice: reservation.totalPrice,
-        paidAmount: reservation.paidAmount,
-        remainingAmount: reservation.remainingAmount || 0,
-        paymentStatus: reservation.paymentStatus,
-        status: reservation.status || 'pending'
-      });
-      setEditingReservation(reservation);
-      setShowReservationModal(true);
-    } else {
-      addToast('لم يتم العثور على الحجز', 'error');
+    console.log('📊 Found reservations for property:', propertyReservations.length);
+    
+    if (propertyReservations.length === 0) {
+      console.log('❌ No reservations found for this property');
+      addToast('لا يوجد حجوزات لهذا العقار', 'error');
+      return;
     }
+    
+    // Get the most recent reservation
+    const latestReservation = propertyReservations[0];
+    console.log('✅ Opening edit modal for reservation:', latestReservation._id);
+    openEditReservationModal(latestReservation);
   };
 
   const openReservationModal = async (property: Property) => {
@@ -760,6 +990,10 @@ export default function EmployerDashboard() {
 
     setSelectedProperty(property);
     setEditingReservation(null); // Clear any existing editing reservation
+    
+    // Check if this is a family property and auto-set marital status
+    const isFamilyProperty = property.targetAudience === 'family';
+    
     setFormData({
       customerName: '',
       customerPhone: '',
@@ -769,7 +1003,12 @@ export default function EmployerDashboard() {
       paidAmount: 0,
       remainingAmount: 0,
       paymentStatus: 'pending',
-      status: 'pending'
+      status: 'pending',
+      isMarried: isFamilyProperty,
+      numberOfPeople: '1',
+      identityImages: [''],
+      notes: [],
+      currentNote: ''
     });
     setReservationError(null);
     setShowReservationModal(true);
@@ -789,6 +1028,14 @@ export default function EmployerDashboard() {
       setIsSubmittingReservation(false);
       return;
     }
+    
+    // Monthly reservation validation
+    const monthlyValidation = validateMonthlyReservation(startDate, endDate, selectedProperty?._id || '');
+    if (!monthlyValidation.isValid) {
+      setReservationError(monthlyValidation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
+      setIsSubmittingReservation(false);
+      return;
+    }
 
     try {
       const token = localStorage.getItem('token');
@@ -797,7 +1044,9 @@ export default function EmployerDashboard() {
         ...(editingReservation ? {} : { employerId: user?.id }), // Only set employerId for new reservations
         ...formData,
         remainingAmount: formData.totalPrice - formData.paidAmount,
-        ...(currentBookingOrder && { orderReservationId: currentBookingOrder._id }) // Add order reference if booking from order
+        ...(currentBookingOrder && { orderReservationId: currentBookingOrder._id }), // Add order reference if booking from order
+        // Exclude currentNote from submission as it's only for UI state
+        currentNote: undefined
       };
 
       let response;
@@ -828,6 +1077,7 @@ export default function EmployerDashboard() {
         setShowReservationModal(false);
         setEditingReservation(null);
         setCurrentBookingOrder(null); // Clear current booking order
+        setPreSelectedDates(null); // Reset pre-selected dates
         
         // If this reservation was created from an order, update the order status
         if (currentBookingOrder) {
@@ -861,68 +1111,380 @@ export default function EmployerDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
-
-  const handleMakePropertyAvailable = async (propertyId: string, propertyTitle: string) => {
-    // Validate property can be made available
-    const isValid = await validatePropertyAction(propertyId, 'makeAvailable');
-    if (!isValid) return;
-
-    // After validation and refresh, check the property state again
-    const updatedProperty = properties.find(p => p._id === propertyId);
+  // Calendar component for current month
+  const PropertyCalendar = ({ propertyId }: { propertyId: string }) => {
+    const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+    const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+    const [selectingDates, setSelectingDates] = useState(false);
+    const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
+    const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
+    const [isSelecting, setIsSelecting] = useState(false);
+    const [hoveredDate, setHoveredDate] = useState<Date | null>(null);
     
-    // Double-check if property is still reserved after refresh
-    if (!updatedProperty || !updatedProperty.isReserved) {
-      addToast('العقار متاح بالفعل', 'info');
-      return;
-    }
-
-    // Find the active reservation for this property
-    const activeReservation = reservations.find((r: any) => {
+    const month = currentMonth;
+    const year = currentYear;
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDate = firstDay.getDay();
+    const daysInMonth = lastDay.getDate();
+    
+    const navigateMonth = (direction: number) => {
+      if (direction === -1) {
+        // Previous month
+        if (month === 0) {
+          setCurrentMonth(11);
+          setCurrentYear(year - 1);
+        } else {
+          setCurrentMonth(month - 1);
+        }
+      } else {
+        // Next month
+        if (month === 11) {
+          setCurrentMonth(0);
+          setCurrentYear(year + 1);
+        } else {
+          setCurrentMonth(month + 1);
+        }
+      }
+    };
+    
+    const goToToday = () => {
+      setCurrentMonth(new Date().getMonth());
+      setCurrentYear(new Date().getFullYear());
+    };
+    
+    const handleDateClick = (date: Date, dateStr: string) => {
+      const reservationInfo = reservedDates.get(dateStr);
+      
+      // If date is reserved, open edit modal
+      if (reservationInfo) {
+        const property = properties.find((p: any) => p._id === propertyId);
+        if (property) {
+          setSelectedProperty(property);
+        }
+        
+        const reservation = reservations.find((r: any) => {
+          const reservationPropertyId = typeof r.propertyId === 'string' 
+            ? r.propertyId 
+            : r.propertyId?._id || r.propertyId.id;
+          return r._id === reservationInfo.reservationId;
+        });
+        
+        if (reservation) {
+          setEditingReservation(reservation);
+          setShowReservationModal(true);
+        }
+        return;
+      }
+      
+      // If date is not reserved, handle date selection
+      if (!isSelecting) {
+        // Start selecting
+        setSelectedStartDate(date);
+        setSelectedEndDate(null);
+        setIsSelecting(true);
+      } else {
+        // Finish selecting
+        if (selectedStartDate) {
+          const start = selectedStartDate.getTime() < date.getTime() ? selectedStartDate : date;
+          const end = selectedStartDate.getTime() < date.getTime() ? date : selectedStartDate;
+          setSelectedStartDate(start);
+          setSelectedEndDate(end);
+          setIsSelecting(false);
+          
+          // Open add reservation modal with selected dates
+          const property = properties.find((p: any) => p._id === propertyId);
+          if (property) {
+            setSelectedProperty(property);
+          }
+          setPreSelectedDates({ startDate: start, endDate: end });
+          
+          // Check if this is a family property and auto-set marital status
+          const isFamilyProperty = property?.targetAudience === 'family';
+          
+          setFormData({
+            customerName: '',
+            customerPhone: '',
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0],
+            totalPrice: 0,
+            paidAmount: 0,
+            remainingAmount: 0,
+            paymentStatus: 'pending',
+            status: 'pending',
+            isMarried: isFamilyProperty,
+            numberOfPeople: '1',
+            identityImages: [''],
+            notes: [],
+            currentNote: ''
+          });
+          setReservationError(null);
+          setShowReservationModal(true);
+          
+          // Reset selection after opening modal
+          setTimeout(() => {
+            setSelectedStartDate(null);
+            setSelectedEndDate(null);
+            setHoveredDate(null);
+          }, 100);
+        }
+      }
+    };
+    
+    const isDateInSelection = (date: Date) => {
+      if (!selectedStartDate || !selectedEndDate) return false;
+      return date >= selectedStartDate && date <= selectedEndDate;
+    };
+    
+    const isDateInHoverRange = (date: Date, dateStr: string) => {
+      if (!isSelecting || !selectedStartDate || !hoveredDate) return false;
+      
+      const reservationInfo = reservedDates.get(dateStr);
+      if (reservationInfo) return false;
+      
+      const start = selectedStartDate.getTime() < hoveredDate.getTime() ? selectedStartDate : hoveredDate;
+      const end = selectedStartDate.getTime() < hoveredDate.getTime() ? hoveredDate : selectedStartDate;
+      return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
+    };
+    
+    const isDateSelecting = (date: Date) => {
+      if (!selectedStartDate || !isSelecting) return false;
+      return date.toDateString() === selectedStartDate.toDateString();
+    };
+    
+    const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 
+                       'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    
+    // Get the property and its reservations
+    const property = properties.find((p: any) => p._id === propertyId);
+    const propertyReservations = reservations.filter((r: any) => {
       const reservationPropertyId = typeof r.propertyId === 'string' 
         ? r.propertyId 
         : r.propertyId?._id || r.propertyId.id;
-      return reservationPropertyId === propertyId && 
-             ['pending', 'confirmed', 'approved'].includes(r.status);
+      return reservationPropertyId === propertyId;
     });
     
-    // Show confirmation modal with reservation details
-    setMakeAvailableConfirmation({
+    // Color palette for different reservations
+    const reservationColors = [
+      { bg: 'bg-red-500/30', text: 'text-red-300', border: 'border-red-500/50', light: 'bg-red-500/20', lightBorder: 'border-red-500/30' },
+      { bg: 'bg-blue-500/30', text: 'text-blue-300', border: 'border-blue-500/50', light: 'bg-blue-500/20', lightBorder: 'border-blue-500/30' },
+      { bg: 'bg-green-500/30', text: 'text-green-300', border: 'border-green-500/50', light: 'bg-green-500/20', lightBorder: 'border-green-500/30' },
+      { bg: 'bg-purple-500/30', text: 'text-purple-300', border: 'border-purple-500/50', light: 'bg-purple-500/20', lightBorder: 'border-purple-500/30' },
+      { bg: 'bg-yellow-500/30', text: 'text-yellow-300', border: 'border-yellow-500/50', light: 'bg-yellow-500/20', lightBorder: 'border-yellow-500/30' },
+      { bg: 'bg-pink-500/30', text: 'text-pink-300', border: 'border-pink-500/50', light: 'bg-pink-500/20', lightBorder: 'border-pink-500/30' },
+      { bg: 'bg-indigo-500/30', text: 'text-indigo-300', border: 'border-indigo-500/50', light: 'bg-indigo-500/20', lightBorder: 'border-indigo-500/30' },
+      { bg: 'bg-orange-500/30', text: 'text-orange-300', border: 'border-orange-500/50', light: 'bg-orange-500/20', lightBorder: 'border-orange-500/30' }
+    ];
+    
+    const getReservedDates = () => {
+      if (!propertyReservations || propertyReservations.length === 0) return new Map();
+      const reservedDatesMap = new Map();
+      
+      propertyReservations.forEach((reservation: any, index: number) => {
+        const colorIndex = index % reservationColors.length;
+        const colors = reservationColors[colorIndex];
+        const start = new Date(reservation.startDate);
+        const end = new Date(reservation.endDate);
+        
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toLocaleDateString('en-CA');
+          reservedDatesMap.set(dateStr, {
+            ...colors,
+            reservationIndex: index,
+            customerName: reservation.customerName,
+            reservationId: reservation._id
+          });
+        }
+      });
+      
+      return reservedDatesMap;
+    };
+    
+    const reservedDates = getReservedDates();
+    
+    return (
+      <div className="bg-white/5 rounded-lg p-2 border border-white/20">
+        <div className="flex items-center justify-between mb-2 sm:mb-3">
+          <button
+            onClick={() => navigateMonth(-1)}
+            className="p-1 rounded bg-white/10 hover:bg-white/20 text-white/80 transition-colors"
+            title="الشهر السابق"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          
+          <div className="text-center">
+            <h4 className="text-white font-semibold text-sm sm:text-base">{monthNames[month]} {year}</h4>
+          </div>
+          
+          <button
+            onClick={() => navigateMonth(1)}
+            className="p-1 rounded bg-white/10 hover:bg-white/20 text-white/80 transition-colors"
+            title="الشهر التالي"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+        
+        {(currentMonth !== new Date().getMonth() || currentYear !== new Date().getFullYear()) && (
+          <div className="text-center mb-2">
+            <button
+              onClick={goToToday}
+              className="text-xs text-blue-400 hover:text-blue-300 underline"
+            >
+              العودة إلى اليوم
+            </button>
+          </div>
+        )}
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-1 text-xs">
+          {dayNames.map(day => (
+            <div key={day} className="text-center text-white/60 font-medium py-0.5 sm:py-1 text-xs sm:text-xs">
+              {day}
+            </div>
+          ))}
+          {Array.from({ length: startDate }, (_, i) => (
+            <div key={`empty-${i}`} className="p-1 sm:p-2"></div>
+          ))}
+          {Array.from({ length: daysInMonth }, (_, i) => {
+            const date = new Date(year, month, i + 1);
+            const dateStr = date.toLocaleDateString('en-CA');
+            const reservationInfo = reservedDates.get(dateStr);
+            const isReserved = reservationInfo;
+            const isToday = dateStr === new Date().toLocaleDateString('en-CA');
+            
+            return (
+              <div
+                key={i + 1}
+                className={` text-center rounded text-xs cursor-pointer relative transition-all duration-200 ${
+                  isReserved 
+                    ? `${reservationInfo.bg} ${reservationInfo.text} border ${reservationInfo.border} hover:opacity-80` 
+                    : isToday 
+                      ? 'bg-blue-500/30 text-blue-300 border border-blue-500/50 hover:bg-blue-500/40'
+                      : isDateInHoverRange(date, dateStr)
+                        ? 'bg-green-500/50 text-white border-2 border-green-400/80 shadow-md shadow-green-500/25'
+                        : isDateInSelection(date)
+                          ? 'bg-green-500/60 text-white border-2 border-green-400 shadow-lg shadow-green-500/30 font-semibold'
+                        : isDateSelecting(date)
+                          ? 'bg-green-500/40 text-white border-2 border-green-400/60 shadow-md shadow-green-500/20'
+                          : 'bg-white/10 text-white/80 hover:bg-white/20'
+                }`}
+                title={isReserved ? `${reservationInfo.customerName} - حجز #${reservationInfo.reservationIndex + 1} (اضغط للتعديل)` : 
+                       isDateInSelection(date) ? 'فترة محددة (اضغط لإكمال التحديد)' :
+                       isDateInHoverRange(date, dateStr) ? 'جزء من الفترة المحددة' :
+                       isDateSelecting(date) ? 'جاري التحديد (اضغط لإكمال)' :
+                       'اضغط لبدء تحديد الفترة'}
+                onClick={() => handleDateClick(date, dateStr)}
+                onMouseEnter={() => isSelecting && !isReserved && setHoveredDate(date)}
+                onMouseLeave={() => setHoveredDate(null)}
+              >
+                {i + 1}
+                {isDateSelecting(date) && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                )}
+                {isDateInSelection(date) && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-300 rounded-full"></div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Selection Status Indicator */}
+        {isSelecting && (
+          <div className="mt-2 p-2 bg-green-500/20 border border-green-400/40 rounded-lg">
+            <p className="text-xs text-green-300 text-center">
+              🔍 جاري تحديد الفترة - اضغط على تاريخ الانتهاء
+            </p>
+          </div>
+        )}
+
+        {propertyReservations && propertyReservations.length > 0 && (
+          <div className="mt-2 sm:mt-3 space-y-1">
+            <p className="text-xs text-white/80 font-medium mb-1">فترات الحجز:</p>
+            {propertyReservations.map((reservation: any, index: number) => {
+              const colorIndex = index % reservationColors.length;
+              const colors = reservationColors[colorIndex];
+              return (
+                <div 
+                  key={reservation._id} 
+                  className={`p-1.5 sm:p-2 ${colors.light} rounded border ${colors.lightBorder} cursor-pointer hover:opacity-80 transition-opacity`}
+                  onClick={() => {
+                    const fullReservation = reservations.find((r: any) => r._id === reservation._id);
+                    if (fullReservation) {
+                      openEditReservationModal(fullReservation);
+                    }
+                  }}
+                  title="اضغط للتعديل"
+                >
+                  <p className={`text-xs ${colors.text}`}>
+                    <span className="font-medium">حجز #{index + 1}:</span> {new Date(reservation.startDate).toLocaleDateString('ar-DZ')} - {new Date(reservation.endDate).toLocaleDateString('ar-DZ')}
+                    <span className={`ml-2 ${colors.text}`}>
+                      ({reservation.customerName})
+                    </span>
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const resetAddReservationForm = () => {
+    // Check if selected property is a family property
+    const isFamilyProperty = selectedProperty?.targetAudience === 'family';
+    
+    setFormData({
+      customerName: '',
+      customerPhone: '',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0],
+      totalPrice: 0,
+      paidAmount: 0,
+      remainingAmount: 0,
+      paymentStatus: 'pending',
+      status: 'pending',
+      isMarried: isFamilyProperty || false,
+      numberOfPeople: '1',
+      identityImages: [''],
+      notes: [],
+      currentNote: ''
+    });
+    setReservationError(null);
+    setEditingReservation(null);
+    setPreSelectedDates(null);
+  };
+
+  const handleClearAllReservations = async (propertyId: string, propertyTitle: string) => {
+    // Count reservations for this property
+    const propertyReservations = reservations.filter((r: any) => {
+      const reservationPropertyId = typeof r.propertyId === 'string' 
+        ? r.propertyId 
+        : r.propertyId?._id || r.propertyId.id;
+      return reservationPropertyId === propertyId;
+    });
+
+    setClearReservationsConfirmation({
       propertyId,
       propertyTitle,
-      reservation: activeReservation
+      reservationCount: propertyReservations.length
     });
   };
 
-  const confirmMakePropertyAvailable = async () => {
-    const { propertyId } = makeAvailableConfirmation;
-    
-    if (!propertyId) {
-      return;
-    }
+  const confirmClearAllReservations = async () => {
+    const { propertyId } = clearReservationsConfirmation;
+    if (!propertyId) return;
 
     try {
-      setIsMakingAvailable(true);
       const token = localStorage.getItem('token');
       
-      // Optimistic update - update UI immediately
-      setProperties(prevProperties => {
-        const updated = prevProperties.map(property => 
-          property._id === propertyId 
-            ? { ...property, available: true, isReserved: false }
-            : property
-        );
-        return updated;
-      });
-      
-      // Close modal
-      setMakeAvailableConfirmation({ propertyId: null, propertyTitle: null, reservation: null });
-      
-      // Update property status to available (keep reservation for history)
+      // Update property to clear reservationIds and set isReserved to false
       const response = await fetch(`https://dmtart.pro/mimorent/api/employer/properties/${propertyId}`, {
         method: 'PUT',
         headers: {
@@ -930,35 +1492,55 @@ export default function EmployerDashboard() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          available: true,
-          isReserved: false
+          reservationIds: [],
+          isReserved: false,
+          available: true
         })
       });
 
       const data = await response.json();
       
       if (data.success) {
+        // Delete all reservations for this property
+        const propertyReservations = reservations.filter((r: any) => {
+          const reservationPropertyId = typeof r.propertyId === 'string' 
+            ? r.propertyId 
+            : r.propertyId?._id || r.propertyId.id;
+          return reservationPropertyId === propertyId;
+        });
+
+        // Delete each reservation
+        for (const reservation of propertyReservations) {
+          await fetch(`https://dmtart.pro/mimorent/api/employer/reservations/${reservation._id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+        }
+
         // Show success toast
-        addToast('تم جعل العقار متاحًا بنجاح', 'success');
+        addToast('تم إنهاء جميع الحجوزات بنجاح', 'success');
         
-        // Refresh properties to ensure consistency
+        // Refresh data
         await fetchProperties();
         await fetchReservations();
+        
+        // Close modal
+        setClearReservationsConfirmation({ propertyId: null, propertyTitle: null, reservationCount: null });
       } else {
-        // Revert optimistic update on failure
-        await fetchProperties();
-        await fetchReservations();
-        addToast('فشل تحديث حالة العقار: ' + (data.message || 'خطأ غير معروف'), 'error');
+        addToast('فشل إنهاء الحجوزات: ' + (data.message || 'خطأ غير معروف'), 'error');
       }
     } catch (error) {
-      console.error('Error making property available:', error);
-      // Revert optimistic update on error
-      await fetchProperties();
-      await fetchReservations();
+      console.error('Error clearing reservations:', error);
       addToast('حدث خطأ. يرجى المحاولة مرة أخرى.', 'error');
-    } finally {
-      setIsMakingAvailable(false);
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/login');
   };
 
   const handlePaidAmountChange = (value: string) => {
@@ -1190,8 +1772,13 @@ export default function EmployerDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {properties.map((property) => {
                 const isReservedByReservation = isPropertyReserved(property._id);
+                const isDisabled = !property.available;
                 return (
-                <div key={property._id} className="bg-white/10 backdrop-blur-md rounded-xl overflow-hidden border border-white/20">
+                <div key={property._id} className={`bg-white/10 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 transition-all duration-300 ${
+                  isDisabled 
+                    ? 'opacity-50 grayscale pointer-events-none' 
+                    : 'hover:bg-white/15'
+                }`}>
                   {/* Property Image */}
                   <div className="relative w-full aspect-[4/2] bg-gray-900 overflow-hidden">
                     {property.images && property.images.length > 0 ? (
@@ -1209,11 +1796,11 @@ export default function EmployerDashboard() {
                     {/* Availability Badge */}
                     <div className="absolute top-4 right-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        property.isReserved
-                          ? 'bg-red-500 text-white' 
-                          : 'bg-green-500 text-white'
+                        property.available 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-red-500 text-white'
                       }`}>
-                        {property.isReserved ? 'محجوز' : 'متاح'}
+                        {property.available ? 'متاح' : 'غير متاح'}
                       </span>
                     </div>
                   </div>
@@ -1288,30 +1875,12 @@ export default function EmployerDashboard() {
                     
                     {property.isReserved ? (
                       <div className="mt-3 space-y-2">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => openEditReservationModal(property)}
-                            disabled={isValidatingAction}
-                            className="w-full px-3 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all text-sm cursor-pointer border-2 border-white/60 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {isValidatingAction ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-white/30 rounded-full animate-spin">
-                                  <div className="w-4 h-4 border-2 border-transparent border-t-white rounded-full"></div>
-                                </div>
-                                جاري التحقق...
-                              </>
-                            ) : (
-                              'تعديل الحجز'
-                            )}
-                          </button>
-                        </div>
                         <button
-                          onClick={() => handleMakePropertyAvailable(property._id, property.title)}
-                          disabled={isValidatingAction || isMakingAvailable}
-                          className="w-full px-3 py-2 bg-gradient-to-br from-[#ff8844] to-[#cc6600] text-white rounded-lg hover:from-[#ff7733] hover:to-[#aa5500] transition-all text-sm cursor-pointer border-2 border-white/60 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          onClick={() => openEditReservationModalForProperty(property)}
+                          disabled={isValidatingAction}
+                          className="w-full px-3 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all text-sm cursor-pointer border-2 border-white/60 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                          {(isValidatingAction || isMakingAvailable) ? (
+                          {isValidatingAction ? (
                             <>
                               <div className="w-4 h-4 border-2 border-white/30 rounded-full animate-spin">
                                 <div className="w-4 h-4 border-2 border-transparent border-t-white rounded-full"></div>
@@ -1319,14 +1888,39 @@ export default function EmployerDashboard() {
                               جاري التحقق...
                             </>
                           ) : (
-                            'جعل العقار متاحا'
+                            'تعديل الحجز الأخير'
                           )}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedProperty(property);
+                            resetAddReservationForm();
+                            setShowReservationModal(true);
+                          }}
+                          className="w-full px-3 py-2 bg-gradient-to-br from-[#22c55e] to-[#16a34a] text-white rounded-lg hover:from-[#16a34a] hover:to-[#15803d] transition-all text-sm cursor-pointer border-2 border-white/60"
+                        >
+                          إضافة حجز آخر
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedPropertyForReservationsList(property._id);
+                            setShowReservationsListModal(true);
+                          }}
+                          className="w-full px-3 py-2 bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] text-white rounded-lg hover:from-[#7c3aed] hover:to-[#6d28d9] transition-all text-sm cursor-pointer border-2 border-white/60"
+                        >
+                          عرض الحجوزات الأخرى
+                        </button>
+                        <button
+                          onClick={() => handleClearAllReservations(property._id, property.title)}
+                          className="w-full px-3 py-2 bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white rounded-lg hover:from-[#dc2626] hover:to-[#b91c1c] transition-all text-sm cursor-pointer border-2 border-white/60"
+                        >
+                          جعل كل الحجوزات مكتملة
                         </button>
                       </div>
                     ) : (
                       <button
                         onClick={() => openReservationModal(property)}
-                        disabled={isValidatingAction}
+                        disabled={isValidatingAction || !property.available}
                         className="mt-3 w-full px-4 py-2 bg-gradient-to-br from-[#3daf6d] to-[#2d9f5d] text-white rounded-lg hover:from-[#2d9f5d] hover:to-[#1d8f4d] transition-all cursor-pointer border-2 border-white/60 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {isValidatingAction ? (
@@ -1340,6 +1934,23 @@ export default function EmployerDashboard() {
                           'احجز الآن'
                         )}
                       </button>
+                    )}
+                  </div>
+                  
+                  {/* Expandable Calendar Section */}
+                  <div className="mt-4 border-t border-white/20">
+                    <button
+                      onClick={() => togglePropertyCard(property._id)}
+                      className="w-full py-2 px-3 bg-white/5 hover:bg-white/10 text-white/80 text-sm font-medium transition-colors flex items-center justify-between"
+                    >
+                      <span>عرض التقويم</span>
+                      <Calendar className={`w-4 h-4 transition-transform ${expandedPropertyCards.has(property._id) ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {expandedPropertyCards.has(property._id) && (
+                      <div className="mt-4 animate-in slide-in-from-top duration-200">
+                        <PropertyCalendar propertyId={property._id} />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1788,14 +2399,16 @@ export default function EmployerDashboard() {
       {/* Reservation Modal */}
       {showReservationModal && selectedProperty && (
         <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 "
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[99999] p-4 sm:p-6 "
           onClick={() => {
             setShowReservationModal(false);
             setCurrentBookingOrder(null);
+            setPreSelectedDates(null);
+            setReservationError(null);
           }}
         >
           <div 
-            className="bg-white/95 backdrop-blur-md rounded-xl border border-white/20 w-full max-w-2xl relative z-[100000] max-h-[85vh] flex flex-col"
+            className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 w-full max-w-5xl lg:max-w-4xl md:max-w-3xl sm:max-w-full mx-4 relative z-[100000] max-h-[90vh] sm:max-h-[95vh] overflow-y-auto animate-in slide-in-from-bottom-4 duration-300"
             style={{
               scrollbarWidth: 'thin',
               scrollbarColor: '#cbd5e1 #f1f5f9'
@@ -1803,28 +2416,107 @@ export default function EmployerDashboard() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="relative bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 p-6 border-b border-gray-100/20 rounded-t-2xl overflow-hidden flex-shrink-0">
-              <h3 className="text-xl font-bold text-white">
-                {editingReservation ? 'تعديل الحجز' : 'حجز عقار'}
-              </h3>
+            <div className="relative bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 p-6 border-b border-gray-100/20 rounded-t-2xl overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full blur-3xl"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full blur-2xl"></div>
+              </div>
+              
+              <div className="relative">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-2xl font-bold text-white">
+                    {editingReservation ? 'تعديل الحجز' : 'إضافة حجز جديد'}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowReservationModal(false);
+                      setCurrentBookingOrder(null);
+                      setPreSelectedDates(null);
+                      setEditingReservation(null);
+                      setReservationError(null);
+                    }}
+                    className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Property Details */}
+                {(() => {
+                  // For editing, get property from reservation; for adding, use selectedProperty
+                  let property;
+                  
+                  if (editingReservation) {
+                    // Editing mode: get property from reservation
+                    const propertyId = typeof editingReservation.propertyId === 'string' 
+                      ? editingReservation.propertyId 
+                      : editingReservation.propertyId?._id || (editingReservation.propertyId as any)?.id || '';
+                    property = properties.find((p: any) => p._id === propertyId);
+                  } else {
+                    // Adding mode: use selectedProperty
+                    property = selectedProperty;
+                  }
+                  
+                  if (!property) return null;
+                  
+                  return (
+                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+                      <h4 className="text-lg font-semibold text-white mb-3">{property.title}</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <span className="text-white/90">{property.location || property.wilayaId?.name || 'غير محدد'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                          </svg>
+                          <span className="text-white/90">{property.propertyType === 'home' ? 'منزل' : property.propertyType === 'villa' ? 'فيلا' : property.propertyType === 'shop' ? 'متجر' : 'غير محدد'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-white/90">{property.reserveTheProperty === 'daily' ? 'يومي' : property.reserveTheProperty === 'monthly' ? 'شهري' : 'يومي'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-white/90">{property.pricePerDay} دج/{property.reserveTheProperty === 'monthly' ? 'شهر' : 'يوم'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <span className="text-white/90">
+                            {property.targetAudience === 'family' ? 'عائلات' : property.targetAudience === 'normal' ? 'أفراد' : property.targetAudience === 'both' ? 'الجميع' : 'الجميع'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             
             <div className="flex-1 p-6 overflow-y-auto">
-            {/* Property Info */}
-            <div className="mb-4 p-3 bg-gray-100 rounded-lg">
-              <h4 className="font-semibold text-gray-800">{selectedProperty.title}</h4>
-              <p className="text-gray-600 text-sm">{selectedProperty.description}</p>
-              <p className="text-blue-600 font-semibold">{selectedProperty.pricePerDay} دج/يوم</p>
-            </div>
-            
-            {/* Error Message */}
-            {reservationError && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                <p className="text-sm font-medium">خطأ: {reservationError}</p>
-              </div>
-            )}
             
             <form onSubmit={handleReservationSubmit} className="space-y-4">
+              {/* Property Info (Read-only) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">العقار</label>
+                <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg">
+                  {selectedProperty.title}
+                </div>
+              </div>
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">اسم العميل</label>
                 <input
@@ -1856,7 +2548,56 @@ export default function EmployerDashboard() {
                     type="date"
                     required
                     value={formData.startDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                    onChange={(e) => {
+                      const startDate = e.target.value;
+                      const property = properties.find((p: any) => p._id === selectedProperty._id);
+                      
+                      // Auto-calculate end date for monthly properties
+                      if (property && property.reserveTheProperty === 'monthly' && startDate) {
+                        const endDate = calculateMonthlyEndDate(startDate, 1);
+                        const calculatedPrice = calculateReservationPrice(startDate, endDate, selectedProperty._id);
+                        setFormData(prev => ({
+                          ...prev,
+                          startDate,
+                          endDate,
+                          totalPrice: calculatedPrice,
+                          remainingAmount: Math.max(0, calculatedPrice - prev.paidAmount)
+                        }));
+                        
+                        // Generate suggestion if editing and original dates exist
+                        if (editingReservation && originalDates) {
+                          const suggestion = generateDateChangeSuggestion(
+                            originalDates.startDate,
+                            originalDates.endDate,
+                            startDate,
+                            endDate
+                          );
+                          setDateChangeSuggestion(suggestion);
+                        }
+                      } else if (startDate && formData.endDate) {
+                        // For daily properties, calculate if end date is already set
+                        const calculatedPrice = calculateReservationPrice(startDate, formData.endDate, selectedProperty._id);
+                        setFormData(prev => ({
+                          ...prev,
+                          startDate,
+                          totalPrice: calculatedPrice,
+                          remainingAmount: Math.max(0, calculatedPrice - prev.paidAmount)
+                        }));
+                        
+                        // Generate suggestion if editing and original dates exist
+                        if (editingReservation && originalDates) {
+                          const suggestion = generateDateChangeSuggestion(
+                            originalDates.startDate,
+                            originalDates.endDate,
+                            startDate,
+                            formData.endDate
+                          );
+                          setDateChangeSuggestion(suggestion);
+                        }
+                      } else {
+                        setFormData(prev => ({ ...prev, startDate }));
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1867,11 +2608,81 @@ export default function EmployerDashboard() {
                     type="date"
                     required
                     value={formData.endDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, endDate: e.target.value }))}
+                    onChange={(e) => {
+                      const endDate = e.target.value;
+                      const startDate = formData.startDate;
+                      
+                      if (startDate && endDate) {
+                        const validation = validateMonthlyReservation(new Date(startDate), new Date(endDate), selectedProperty._id);
+                        if (!validation.isValid) {
+                          setReservationError(validation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
+                        } else {
+                          setReservationError(null);
+                          // Auto-calculate total price
+                          const calculatedPrice = calculateReservationPrice(startDate, endDate, selectedProperty._id);
+                          setFormData(prev => ({
+                            ...prev,
+                            endDate,
+                            totalPrice: calculatedPrice,
+                            remainingAmount: Math.max(0, calculatedPrice - prev.paidAmount)
+                          }));
+                          
+                          // Generate suggestion if editing and original dates exist
+                          if (editingReservation && originalDates) {
+                            const suggestion = generateDateChangeSuggestion(
+                              originalDates.startDate,
+                              originalDates.endDate,
+                              startDate,
+                              endDate
+                            );
+                            setDateChangeSuggestion(suggestion);
+                          }
+                        }
+                      } else {
+                        setFormData(prev => ({ ...prev, endDate }));
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
+
+              {/* Error Message */}
+              {reservationError && (
+                <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                  <p className="text-sm font-medium mb-1">خطأ:</p>
+                  <pre className="text-xs whitespace-pre-line font-mono">
+                    {reservationError}
+                  </pre>
+                </div>
+              )}
+
+              {/* Smart Suggestion */}
+              {dateChangeSuggestion && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm text-amber-800 font-medium mb-2">💡 اقتراح ذكي:</p>
+                      <p className="text-sm text-amber-700">{dateChangeSuggestion}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (dateChangeSuggestion) {
+                          setFormData(prev => ({
+                            ...prev,
+                            notes: [...prev.notes, dateChangeSuggestion]
+                          }));
+                          setDateChangeSuggestion(null);
+                        }
+                      }}
+                      className="mr-3 px-3 py-1 bg-amber-500 text-white text-sm rounded hover:bg-amber-600 transition-colors"
+                    >
+                      تطبيق
+                    </button>
+                  </div>
+                </div>
+              )}
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">السعر الإجمالي (دج)</label>
@@ -1880,11 +2691,37 @@ export default function EmployerDashboard() {
                   required
                   min="0"
                   value={formData.totalPrice}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    totalPrice: Number(e.target.value),
-                    remainingAmount: Math.max(0, Number(e.target.value) - prev.paidAmount)
-                  }))}
+                  onChange={(e) => {
+                    const totalPrice = Number(e.target.value);
+                    const paidAmount = formData.paidAmount;
+                    
+                    // Validate that paid amount doesn't exceed total price
+                    if (paidAmount > totalPrice && totalPrice > 0) {
+                      setReservationError('المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الإجمالي');
+                      return;
+                    } else {
+                      setReservationError(null);
+                    }
+                    
+                    const remainingAmount = Math.max(0, totalPrice - paidAmount);
+                    
+                    // Auto-calculate payment status
+                    let paymentStatus: 'pending' | 'partial' | 'paid';
+                    if (paidAmount === 0) {
+                      paymentStatus = 'pending';
+                    } else if (paidAmount >= totalPrice) {
+                      paymentStatus = 'paid';
+                    } else {
+                      paymentStatus = 'partial';
+                    }
+                    
+                    setFormData(prev => ({
+                      ...prev,
+                      totalPrice,
+                      remainingAmount,
+                      paymentStatus
+                    }));
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="أدخل السعر الإجمالي"
                 />
@@ -1898,7 +2735,37 @@ export default function EmployerDashboard() {
                     required
                     min="0"
                     value={formData.paidAmount}
-                    onChange={(e) => handlePaidAmountChange(e.target.value)}
+                    onChange={(e) => {
+                      const paidAmount = Number(e.target.value);
+                      const totalPrice = formData.totalPrice;
+                      
+                      // Validate that paid amount doesn't exceed total price
+                      if (paidAmount > totalPrice && totalPrice > 0) {
+                        setReservationError('المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الإجمالي');
+                        return;
+                      } else {
+                        setReservationError(null);
+                      }
+                      
+                      const remainingAmount = Math.max(0, totalPrice - paidAmount);
+                      
+                      // Auto-calculate payment status
+                      let paymentStatus: 'pending' | 'partial' | 'paid';
+                      if (paidAmount === 0) {
+                        paymentStatus = 'pending';
+                      } else if (paidAmount >= totalPrice) {
+                        paymentStatus = 'paid';
+                      } else {
+                        paymentStatus = 'partial';
+                      }
+                      
+                      setFormData(prev => ({
+                        ...prev,
+                        paidAmount,
+                        remainingAmount,
+                        paymentStatus
+                      }));
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="المبلغ المدفوع"
                   />
@@ -1910,7 +2777,7 @@ export default function EmployerDashboard() {
                     type="number"
                     required
                     min="0"
-                    value={formData.totalPrice - formData.paidAmount}
+                    value={formData.remainingAmount}
                     readOnly
                     className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
                     placeholder="المبلغ المتبقي"
@@ -1935,12 +2802,15 @@ export default function EmployerDashboard() {
                     
                     setFormData(updatedFormData);
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
+                  style={{ cursor: 'not-allowed' }}
+                  disabled
                 >
                   <option value="pending">معلق</option>
                   <option value="partial">مدفوع جزئياً</option>
                   <option value="paid">مدفوع بالكامل</option>
                 </select>
+                <p className="text-xs text-gray-500 mt-1">يتم تحديد الحالة تلقائياً بناءً على المبلغ المدفوع</p>
               </div>
 
               <div>
@@ -1958,12 +2828,190 @@ export default function EmployerDashboard() {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">الحالة العائلية</label>
+                {(() => {
+                  const property = properties.find((p: any) => p._id === selectedProperty._id);
+                  const isFamilyProperty = property?.targetAudience === 'family';
+                  
+                  if (isFamilyProperty) {
+                    // Auto-set to married for family properties
+                    return (
+                      <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-700">
+                        متزوج (تلقائي للعقارات العائلية)
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <select
+                      required
+                      value={formData.isMarried.toString()}
+                      onChange={(e) => {
+                        const isMarried = e.target.value === 'true';
+                        setFormData(prev => ({
+                          ...prev,
+                          isMarried
+                        }));
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="false">أعزب</option>
+                      <option value="true">متزوج</option>
+                    </select>
+                  );
+                })()}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">عدد الأشخاص</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.numberOfPeople}
+                  onChange={(e) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      numberOfPeople: e.target.value
+                    }));
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="أدخل عدد الأشخاص"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {(() => {
+                    const property = properties.find((p: any) => p._id === selectedProperty._id);
+                    const isFamilyProperty = property?.targetAudience === 'family';
+                    return isFamilyProperty ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف';
+                  })()}
+                </label>
+                <div className="space-y-2">
+                  {formData.identityImages.map((image, index) => (
+                    <div key={index} className="flex items-center space-x-2 space-x-reverse">
+                      <input
+                        type="text"
+                        value={image}
+                        onChange={(e) => {
+                          const newImages = [...formData.identityImages];
+                          newImages[index] = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            identityImages: newImages
+                          }));
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="رابط الصورة"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newImages = formData.identityImages.filter((_, i) => i !== index);
+                          setFormData(prev => ({
+                            ...prev,
+                            identityImages: newImages
+                          }));
+                        }}
+                        className="px-3 py-2 mx-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        identityImages: [...prev.identityImages, '']
+                      }));
+                    }}
+                    className="w-full px-3 py-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-600 transition-colors"
+                  >
+                    إضافة صورة
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {formData.notes.map((note, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                      >
+                        {note}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newNotes = formData.notes.filter((_, i) => i !== index);
+                            setFormData(prev => ({
+                              ...prev,
+                              notes: newNotes
+                            }));
+                          }}
+                          className="mr-2 text-blue-600 hover:text-blue-800"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex space-x-2 space-x-reverse">
+                    <input
+                      type="text"
+                      value={formData.currentNote || ''}
+                      onChange={(e) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          currentNote: e.target.value
+                        }));
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && formData.currentNote?.trim()) {
+                          e.preventDefault();
+                          setFormData(prev => ({
+                            ...prev,
+                            notes: [...prev.notes, prev.currentNote!.trim()],
+                            currentNote: ''
+                          }));
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="أضف ملاحظة واضغط Enter"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (formData.currentNote?.trim()) {
+                          setFormData(prev => ({
+                            ...prev,
+                            notes: [...prev.notes, prev.currentNote!.trim()],
+                            currentNote: ''
+                          }));
+                        }
+                      }}
+                      className="px-4 mx-2 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      إضافة
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => {
                     setShowReservationModal(false);
                     setCurrentBookingOrder(null);
+                    setPreSelectedDates(null);
+                    setReservationError(null);
                   }}
                   className="flex-1 px-4 py-2 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -2311,124 +3359,176 @@ export default function EmployerDashboard() {
         </div>
       )}
 
-      {/* Make Property Available Confirmation Modal */}
-      {makeAvailableConfirmation.propertyId && (
+      {/* Reservations List Modal */}
+      {showReservationsListModal && (
         <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
-          onClick={() => setMakeAvailableConfirmation({ propertyId: null, propertyTitle: null, reservation: null })}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 "
+          onClick={() => setShowReservationsListModal(false)}
         >
           <div 
-            className="bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000] max-h-[90vh] overflow-y-auto"
+            className="bg-gradient-to-br from-gray-900/95 to-gray-800/95 backdrop-blur-md rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
- 
-            
-            <h3 className="text-xl font-bold text-white mb-4">
-              جعل العقار متاحًا
-                         <div className="flex items-center mb-4">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <Home className="w-6 h-6 text-green-600" />
-              </div>
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h3 className="text-2xl font-bold text-white">جميع حجوزات العقار</h3>
+              <button
+                onClick={() => setShowReservationsListModal(false)}
+                className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {(() => {
+                const propertyReservations = reservations.filter((r: any) => {
+                  const reservationPropertyId = typeof r.propertyId === 'string' 
+                    ? r.propertyId 
+                    : r.propertyId?._id || r.propertyId.id;
+                  return reservationPropertyId === selectedPropertyForReservationsList;
+                });
+
+                if (propertyReservations.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <Calendar className="w-16 h-16 text-white/30 mx-auto mb-4" />
+                      <p className="text-white/60">لا توجد حجوزات لهذا العقار</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {propertyReservations.map((reservation: any, index: number) => (
+                      <div key={reservation._id} className="bg-white/5 rounded-lg p-4 border border-white/20">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-sm font-medium">
+                                حجز #{index + 1}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                reservation.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' :
+                                reservation.status === 'confirmed' ? 'bg-blue-500/20 text-blue-300' :
+                                reservation.status === 'completed' ? 'bg-green-500/20 text-green-300' :
+                                reservation.status === 'cancelled' ? 'bg-red-500/20 text-red-300' :
+                                'bg-gray-500/20 text-gray-300'
+                              }`}>
+                                {reservation.status === 'pending' ? 'في الانتظار' :
+                                 reservation.status === 'confirmed' ? 'مؤكد' :
+                                 reservation.status === 'completed' ? 'مكتمل' :
+                                 reservation.status === 'cancelled' ? 'ملغي' :
+                                 reservation.status}
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-white/60">العميل:</span>
+                                <span className="text-white mr-2">{reservation.customerName}</span>
+                              </div>
+                              <div>
+                                <span className="text-white/60">الهاتف:</span>
+                                <span className="text-white mr-2">{reservation.customerPhone}</span>
+                              </div>
+                              <div>
+                                <span className="text-white/60">من:</span>
+                                <span className="text-white mr-2">{new Date(reservation.startDate).toLocaleDateString('ar-DZ')}</span>
+                              </div>
+                              <div>
+                                <span className="text-white/60">إلى:</span>
+                                <span className="text-white mr-2">{new Date(reservation.endDate).toLocaleDateString('ar-DZ')}</span>
+                              </div>
+                              <div>
+                                <span className="text-white/60">السعر الإجمالي:</span>
+                                <span className="text-white mr-2">{reservation.totalPrice} دج</span>
+                              </div>
+                              <div>
+                                <span className="text-white/60">المبلغ المدفوع:</span>
+                                <span className="text-white mr-2">{reservation.paidAmount} دج</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col gap-2 ml-4">
+                            <button
+                              onClick={() => {
+                                const property = properties.find((p: any) => p._id === selectedPropertyForReservationsList);
+                                if (property) {
+                                  setSelectedProperty(property);
+                                  setEditingReservation(reservation);
+                                  setShowReservationModal(true);
+                                  setShowReservationsListModal(false);
+                                }
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            >
+                              تعديل الحجز
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-white/10">
+              <button
+                onClick={() => setShowReservationsListModal(false)}
+                className="w-full px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Clear Reservations Confirmation Modal */}
+      {clearReservationsConfirmation.propertyId && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
+          onClick={() => setClearReservationsConfirmation({ propertyId: null, propertyTitle: null, reservationCount: null })}
+        >
+          <div 
+            className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              تأكيد إنهاء جميع الحجوزات
             </h3>
             
-            <p className="text-white mb-4">
-              تأكد من معلومات الحجز قبل جعل العقار متاح
-            </p>
-            
-            {/* Reservation Details */}
-            {makeAvailableConfirmation.reservation && (
-              <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700 font-medium">السعر الإجمالي (دج)</span>
-                  <span className="text-gray-900 font-bold">
-                    {makeAvailableConfirmation.reservation.totalPrice?.toLocaleString('ar-DZ') || 0}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700 font-medium">المبلغ المدفوع (دج)</span>
-                  <span className="text-gray-900 font-bold">
-                    {makeAvailableConfirmation.reservation.paidAmount?.toLocaleString('ar-DZ') || 0}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700 font-medium">المبلغ المتبقي (دج)</span>
-                  <span className="text-gray-900 font-bold">
-                    {makeAvailableConfirmation.reservation.remainingAmount?.toLocaleString('ar-DZ') || 
-                     (makeAvailableConfirmation.reservation.totalPrice - makeAvailableConfirmation.reservation.paidAmount)?.toLocaleString('ar-DZ') || 0}
-                  </span>
-                </div>
-                
-                <div className="border-t pt-3">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-gray-700 font-medium">حالة الدفع</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      makeAvailableConfirmation.reservation.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
-                      makeAvailableConfirmation.reservation.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {makeAvailableConfirmation.reservation.paymentStatus === 'paid' ? 'مدفوع بالكامل' :
-                       makeAvailableConfirmation.reservation.paymentStatus === 'partial' ? 'مدفوع جزئياً' :
-                       'غير مدفوع'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-700 font-medium">حالة الحجز</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      makeAvailableConfirmation.reservation.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                      makeAvailableConfirmation.reservation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      makeAvailableConfirmation.reservation.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {makeAvailableConfirmation.reservation.status === 'confirmed' ? 'مؤكد' :
-                       makeAvailableConfirmation.reservation.status === 'pending' ? 'معلق' :
-                       makeAvailableConfirmation.reservation.status === 'cancelled' ? 'ملغي' :
-                       makeAvailableConfirmation.reservation.status}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="border-t pt-3">
-                  <div className="text-sm text-gray-600">
-                    <div className="mb-1">
-                      <span className="font-medium">العميل:</span> {makeAvailableConfirmation.reservation.customerName}
-                    </div>
-                    <div className="mb-1">
-                      <span className="font-medium">الهاتف:</span> {makeAvailableConfirmation.reservation.customerPhone}
-                    </div>
-                    <div>
-                      <span className="font-medium">الفترة:</span> {
-                        new Date(makeAvailableConfirmation.reservation.startDate).toLocaleDateString('ar-DZ')
-                      } - {
-                        new Date(makeAvailableConfirmation.reservation.endDate).toLocaleDateString('ar-DZ')
-                      }
-                    </div>
-                  </div>
-                </div>
+            <div className="mb-4">
+              <p className="text-gray-600 mb-2">
+                هل أنت متأكد من إنهاء جميع حجوزات العقار التالي؟
+              </p>
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="font-medium">{clearReservationsConfirmation.propertyTitle}</p>
+                <p className="text-sm text-gray-600">
+                  عدد الحجوزات: {clearReservationsConfirmation.reservationCount}
+                </p>
               </div>
-            )}
-            
-            <p className="text-white text-sm mb-6">
-              هل أنت متأكد من أنك تريد جعل العقار "{makeAvailableConfirmation.propertyTitle || ''}" متاحًا؟
-            </p>
-            
-            <div className="flex space-x-2 space-x-reverse">
+            </div>
+
+            <div className="flex flex-col space-y-2">
               <button
-                type="button"
-                onClick={() => setMakeAvailableConfirmation({ propertyId: null, propertyTitle: null, reservation: null })}
-                className="flex-1  px-4 py-2   border border-gray-300 text-white rounded-lg hover:bg-gray-50 hover:text-black cursor-pointer transition-colors"
+                onClick={confirmClearAllReservations}
+                className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
-                إلغاء
+                نعم، إنهاء جميع الحجوزات
               </button>
               <button
-                type="button"
-                onClick={confirmMakePropertyAvailable}
-                className="flex-1 cursor-pointer  px-4 py-2 mx-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                onClick={() => setClearReservationsConfirmation({ propertyId: null, propertyTitle: null, reservationCount: null })}
+                className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
-                تأكيد
+                إلغاء
               </button>
             </div>
           </div>

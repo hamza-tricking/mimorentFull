@@ -338,6 +338,51 @@ export default function Dashboard() {
       monthlyDiscountInput.value = monthlyDiscountPrice;
     }
   };
+
+  // Function to calculate total price based on property price and reservation dates
+  const calculateReservationPrice = (startDate: string, endDate: string, propertyId: string): number => {
+    const property = properties.find((p: any) => p._id === propertyId);
+    if (!property) return 0;
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (property.reserveTheProperty === 'daily') {
+      // Calculate days difference (including both start and end dates)
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      return daysDiff * property.pricePerDay;
+    } else {
+      // For monthly reservations, calculate months difference
+      const monthsDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+      return monthsDiff * property.pricePerDay;
+    }
+  };
+
+  // Function to generate date change suggestion
+  const generateDateChangeSuggestion = (oldStartDate: string, oldEndDate: string, newStartDate: string, newEndDate: string): string | null => {
+    const oldStart = new Date(oldStartDate);
+    const oldEnd = new Date(oldEndDate);
+    const newStart = new Date(newStartDate);
+    const newEnd = new Date(newEndDate);
+    
+    const oldDays = Math.ceil((oldEnd.getTime() - oldStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const newDays = Math.ceil((newEnd.getTime() - newStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const dayDifference = newDays - oldDays;
+    
+    // Only generate suggestion if there's an actual change in days
+    if (dayDifference === 0) return null;
+    
+    const action = dayDifference > 0 ? 'إضافة' : 'إزالة';
+    const daysCount = Math.abs(dayDifference);
+    
+    return `العميل يريد ${action} ${daysCount} ${daysCount === 1 ? 'يوم' : 'أيام'} من الحجز. الفترة السابقة: ${formatDate(oldStartDate)} - ${formatDate(oldEndDate)}. الفترة الجديدة: ${formatDate(newStartDate)} - ${formatDate(newEndDate)}.`;
+  };
+
+  // Helper function to format date
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ar-DZ', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  };
   
   // Reservation state
   const [reservations, setReservations] = useState<any[]>([]);
@@ -365,6 +410,13 @@ export default function Dashboard() {
   
   // Pre-filled reservation data from orders
   const [preFilledReservationData, setPreFilledReservationData] = useState<any>(null);
+  
+  // State for tracking original dates and smart suggestions
+  const [originalDates, setOriginalDates] = useState<{
+    startDate: string;
+    endDate: string;
+  } | null>(null);
+  const [dateChangeSuggestion, setDateChangeSuggestion] = useState<string | null>(null);
   
   // Reservation form state
   const [addReservationForm, setAddReservationForm] = useState({
@@ -2275,6 +2327,13 @@ return err.msg || JSON.stringify(err);
 
   const openEditReservationModal = (reservation: any) => {
     setEditingReservation(reservation);
+    
+    // Store original dates for change detection
+    const startDate = new Date(reservation.startDate).toISOString().split('T')[0];
+    const endDate = new Date(reservation.endDate).toISOString().split('T')[0];
+    setOriginalDates({ startDate, endDate });
+    setDateChangeSuggestion(null); // Reset suggestion when opening edit modal
+    
     setShowEditReservationModal(true);
   };
 
@@ -6576,6 +6635,7 @@ openEditReservationModal(reservation);
       setShowAddReservationModal(false);
       resetAddReservationForm();
       setPreSelectedDates(null);
+      setReservationError(null);
     }}
 >
   <div 
@@ -6602,6 +6662,7 @@ openEditReservationModal(reservation);
               setShowAddReservationModal(false);
               resetAddReservationForm();
               setPreSelectedDates(null);
+              setReservationError(null);
             }}
             className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
           >
@@ -6661,15 +6722,6 @@ openEditReservationModal(reservation);
     </div>
     
     <div className="p-6">
-    {/* Error Message */}
-    {reservationError && (
-      <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-        <p className="text-sm font-medium mb-1">خطأ:</p>
-        <pre className="text-xs whitespace-pre-line font-mono">
-          {reservationError}
-        </pre>
-      </div>
-    )}
     
     <form
       onSubmit={(e) => {
@@ -6790,6 +6842,26 @@ onChange={(e) => {
     const endDateInput = document.querySelector('input[name="endDate"]') as HTMLInputElement;
     if (endDateInput) {
       endDateInput.value = endDate;
+      // Auto-calculate total price
+      const totalPrice = calculateReservationPrice(startDate, endDate, selectedPropertyForReservation);
+      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+      if (totalPriceInput) {
+        totalPriceInput.value = totalPrice.toString();
+        // Trigger change event to update remaining amount
+        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+  } else if (startDate) {
+    // For daily properties, try to calculate if end date is already set
+    const endDateInput = document.querySelector('input[name="endDate"]') as HTMLInputElement;
+    if (endDateInput && endDateInput.value) {
+      const totalPrice = calculateReservationPrice(startDate, endDateInput.value, selectedPropertyForReservation);
+      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+      if (totalPriceInput) {
+        totalPriceInput.value = totalPrice.toString();
+        // Trigger change event to update remaining amount
+        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     }
   }
 }}
@@ -6817,6 +6889,14 @@ onChange={(e) => {
       setReservationError(validation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
     } else {
       setReservationError(null);
+      // Auto-calculate total price
+      const totalPrice = calculateReservationPrice(startDate, endDate, selectedPropertyForReservation);
+      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+      if (totalPriceInput) {
+        totalPriceInput.value = totalPrice.toString();
+        // Trigger change event to update remaining amount
+        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     }
   }
 }}
@@ -6824,6 +6904,16 @@ className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none
           />
         </div>
       </div>
+
+      {/* Error Message */}
+      {reservationError && (
+        <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          <p className="text-sm font-medium mb-1">خطأ:</p>
+          <pre className="text-xs whitespace-pre-line font-mono">
+            {reservationError}
+          </pre>
+        </div>
+      )}
       
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">السعر الإجمالي (دج)</label>
@@ -6836,11 +6926,31 @@ className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none
           onChange={(e) => {
 const totalPrice = e.target.value;
 const paidAmount = Number(addReservationForm.paidAmount) || 0;
+
+// Validate that paid amount doesn't exceed total price
+if (paidAmount > Number(totalPrice) && Number(totalPrice) > 0) {
+  setReservationError('المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الإجمالي');
+} else {
+  setReservationError(null);
+}
+
 const remainingAmount = Math.max(0, Number(totalPrice) - paidAmount);
+
+// Auto-calculate payment status
+let paymentStatus: string;
+if (paidAmount === 0) {
+  paymentStatus = 'pending';
+} else if (paidAmount >= Number(totalPrice)) {
+  paymentStatus = 'paid';
+} else {
+  paymentStatus = 'partial';
+}
+
 setAddReservationForm(prev => ({
   ...prev,
   totalPrice,
-  remainingAmount: remainingAmount.toString()
+  remainingAmount: remainingAmount.toString(),
+  paymentStatus
 }));
           }}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -6860,12 +6970,31 @@ value={addReservationForm.paidAmount}
 onChange={(e) => {
   const paidAmount = e.target.value;
   const totalPrice = Number(addReservationForm.totalPrice) || 0;
+  
+  // Validate that paid amount doesn't exceed total price
+  if (Number(paidAmount) > totalPrice && totalPrice > 0) {
+    setReservationError('المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الإجمالي');
+  } else {
+    setReservationError(null);
+  }
+  
   const remainingAmount = Math.max(0, totalPrice - Number(paidAmount));
+  
+  // Auto-calculate payment status
+  let paymentStatus: string;
+  if (Number(paidAmount) === 0) {
+    paymentStatus = 'pending';
+  } else if (Number(paidAmount) >= totalPrice) {
+    paymentStatus = 'paid';
+  } else {
+    paymentStatus = 'partial';
+  }
   
   setAddReservationForm(prev => ({
     ...prev,
     paidAmount,
-    remainingAmount: remainingAmount.toString()
+    remainingAmount: remainingAmount.toString(),
+    paymentStatus
   }));
 }}
 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -6893,6 +7022,7 @@ placeholder="المبلغ المتبقي"
         <select
           name="paymentStatus"
           required
+          value={addReservationForm.paymentStatus}
           onChange={(e) => {
 const newPaymentStatus = e.target.value;
 const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
@@ -6905,12 +7035,15 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
   remainingAmountInput.value = remainingAmount.toString();
 }
           }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
+          style={{ cursor: 'not-allowed' }}
+          disabled
         >
           <option value="pending">معلق</option>
           <option value="partial">مدفوع جزئياً</option>
           <option value="paid">مدفوع بالكامل</option>
         </select>
+        <p className="text-xs text-gray-500 mt-1">يتم تحديد الحالة تلقائياً بناءً على المبلغ المدفوع</p>
       </div>
 
       <div>
@@ -7171,6 +7304,7 @@ setShowContractModal(true);
   className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 "
   onClick={() => {
     setShowEditReservationModal(false);
+    setReservationError(null);
   }}
 >
   <div 
@@ -7261,12 +7395,6 @@ setShowContractModal(true);
     </div>
     
     <div className="p-6">
-    {/* Error Message */}
-    {reservationError && (
-      <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-        <p className="text-sm font-medium">خطأ: {reservationError}</p>
-      </div>
-    )}
     
     <form
       onSubmit={(e) => {
@@ -7381,6 +7509,48 @@ onChange={(e) => {
     const endDateInput = document.querySelector('form[name="editReservationForm"] input[name="endDate"]') as HTMLInputElement;
     if (endDateInput) {
       endDateInput.value = endDate;
+      // Auto-calculate total price
+      const totalPrice = calculateReservationPrice(startDate, endDate, propertyId);
+      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+      if (totalPriceInput) {
+        totalPriceInput.value = totalPrice.toString();
+        // Trigger change event to update remaining amount
+        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+    
+    // Generate suggestion if original dates exist
+    if (originalDates) {
+      const suggestion = generateDateChangeSuggestion(
+        originalDates.startDate,
+        originalDates.endDate,
+        startDate,
+        endDate
+      );
+      setDateChangeSuggestion(suggestion);
+    }
+  } else if (startDate) {
+    // For daily properties, try to calculate if end date is already set
+    const endDateInput = document.querySelector('input[name="endDate"]') as HTMLInputElement;
+    if (endDateInput && endDateInput.value) {
+      const totalPrice = calculateReservationPrice(startDate, endDateInput.value, propertyId);
+      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+      if (totalPriceInput) {
+        totalPriceInput.value = totalPrice.toString();
+        // Trigger change event to update remaining amount
+        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      // Generate suggestion if original dates exist
+      if (originalDates) {
+        const suggestion = generateDateChangeSuggestion(
+          originalDates.startDate,
+          originalDates.endDate,
+          startDate,
+          endDateInput.value
+        );
+        setDateChangeSuggestion(suggestion);
+      }
     }
   }
 }}
@@ -7411,6 +7581,25 @@ onChange={(e) => {
       setReservationError(validation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
     } else {
       setReservationError(null);
+      // Auto-calculate total price
+      const totalPrice = calculateReservationPrice(startDate, endDate, propertyId);
+      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+      if (totalPriceInput) {
+        totalPriceInput.value = totalPrice.toString();
+        // Trigger change event to update remaining amount
+        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      
+      // Generate suggestion if original dates exist
+      if (originalDates) {
+        const suggestion = generateDateChangeSuggestion(
+          originalDates.startDate,
+          originalDates.endDate,
+          startDate,
+          endDate
+        );
+        setDateChangeSuggestion(suggestion);
+      }
     }
   }
 }}
@@ -7418,6 +7607,42 @@ className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none
           />
         </div>
       </div>
+
+      {/* Error Message */}
+      {reservationError && (
+        <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          <p className="text-sm font-medium">خطأ: {reservationError}</p>
+        </div>
+      )}
+
+      {/* Smart Suggestion */}
+      {dateChangeSuggestion && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm text-amber-800 font-medium mb-2">💡 اقتراح ذكي:</p>
+              <p className="text-sm text-amber-700">{dateChangeSuggestion}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (dateChangeSuggestion && editingReservation) {
+                  // Update the editing reservation notes
+                  const updatedNotes = [...(editingReservation.notes || []), dateChangeSuggestion];
+                  setEditingReservation(prev => ({
+                    ...prev,
+                    notes: updatedNotes
+                  }));
+                  setDateChangeSuggestion(null);
+                }
+              }}
+              className="mr-3 px-3 py-1 bg-amber-500 text-white text-sm rounded hover:bg-amber-600 transition-colors"
+            >
+              تطبيق
+            </button>
+          </div>
+        </div>
+      )}
       
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">السعر الإجمالي (دج)</label>
@@ -7427,6 +7652,41 @@ className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none
           required
           min="0"
           defaultValue={editingReservation?.totalPrice?.toString() || ''}
+          onChange={(e) => {
+            const form = e.target.form;
+            if (form) {
+              const totalPrice = Number(e.target.value) || 0;
+              const paidAmount = Number(form.paidAmount?.value) || 0;
+              
+              // Validate that paid amount doesn't exceed total price
+              if (paidAmount > totalPrice && totalPrice > 0) {
+                setReservationError('المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الإجمالي');
+                return;
+              } else {
+                setReservationError(null);
+              }
+              
+              const remainingAmount = Math.max(0, totalPrice - paidAmount);
+              const remainingField = form.remainingAmount;
+              if (remainingField) {
+                remainingField.value = remainingAmount;
+              }
+              
+              // Auto-calculate payment status
+              const paymentStatusField = form.paymentStatus;
+              if (paymentStatusField) {
+                let paymentStatus: string;
+                if (paidAmount === 0) {
+                  paymentStatus = 'pending';
+                } else if (paidAmount >= totalPrice) {
+                  paymentStatus = 'paid';
+                } else {
+                  paymentStatus = 'partial';
+                }
+                paymentStatusField.value = paymentStatus;
+              }
+            }
+          }}
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="أدخل السعر الإجمالي"
         />
@@ -7446,10 +7706,33 @@ onChange={(e) => {
   if (form) {
     const totalPrice = Number(form.totalPrice?.value) || 0;
     const paidAmount = Number(e.target.value) || 0;
+    
+    // Validate that paid amount doesn't exceed total price
+    if (paidAmount > totalPrice && totalPrice > 0) {
+      setReservationError('المبلغ المدفوع لا يمكن أن يكون أكبر من السعر الإجمالي');
+      return;
+    } else {
+      setReservationError(null);
+    }
+    
     const remainingAmount = Math.max(0, totalPrice - paidAmount);
     const remainingField = form.remainingAmount;
     if (remainingField) {
       remainingField.value = remainingAmount;
+    }
+    
+    // Auto-calculate payment status
+    const paymentStatusField = form.paymentStatus;
+    if (paymentStatusField) {
+      let paymentStatus: string;
+      if (paidAmount === 0) {
+        paymentStatus = 'pending';
+      } else if (paidAmount >= totalPrice) {
+        paymentStatus = 'paid';
+      } else {
+        paymentStatus = 'partial';
+      }
+      paymentStatusField.value = paymentStatus;
     }
   }
 }}
@@ -7490,12 +7773,15 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
   remainingAmountInput.value = '0';
 }
           }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
+          style={{ cursor: 'not-allowed' }}
+          disabled
         >
           <option value="pending">معلق</option>
           <option value="partial">مدفوع جزئياً</option>
           <option value="paid">مدفوع بالكامل</option>
         </select>
+        <p className="text-xs text-gray-500 mt-1">يتم تحديد الحالة تلقائياً بناءً على المبلغ المدفوع</p>
       </div>
 
       <div>
@@ -7613,6 +7899,7 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
             {(editingReservation?.notes || []).map((note: string, index: number) => (
               <span
                 key={index}
+                className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
                 className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
               >
                 {note}
