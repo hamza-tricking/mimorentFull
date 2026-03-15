@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, MapPin, Home, Phone, Mail, Calendar, Users, Bath, Square, Check, Star, Share2, Heart, ArrowLeft, ArrowRight } from 'lucide-react';
+import GoogleMapPreview from './GoogleMapPreview';
 
 interface Property {
   _id: string;
@@ -145,7 +146,7 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
+          <div className="p-6 space-y-6">
             {/* Images Section */}
             <div className="space-y-4">
               {/* Main Image */}
@@ -225,216 +226,225 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
               )}
             </div>
 
-            {/* Details Section */}
-            <div className="space-y-6 text-center">
-              {/* Price and Quick Info */}
-              <div className="bg-gradient-to-br from-[#24697f]/10 via-teal-500/10 to-pink-500/10 rounded-3xl p-8 border border-[#24697f]/20 shadow-2xl backdrop-blur-sm">
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="text-center">
-                    {property.priceBeforeDiscountPerDay && property.priceBeforeDiscountPerDay > property.pricePerDay ? (
-                      <div className="space-y-1">
-                        <div className="text-lg text-gray-400 line-through">
-                          {property.priceBeforeDiscountPerDay.toLocaleString('ar-DZ')} دج/يوم
+            {/* Details Grid - Two Column Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left Column */}
+              <div className="space-y-6">
+                {/* Price and Quick Info */}
+                <div className="bg-gradient-to-br from-[#24697f]/10 via-teal-500/10 to-pink-500/10 rounded-3xl p-6 border border-[#24697f]/20 shadow-2xl backdrop-blur-sm">
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="text-center">
+                      {property.priceBeforeDiscountPerDay && property.priceBeforeDiscountPerDay > property.pricePerDay ? (
+                        <div className="space-y-1">
+                          <div className="text-lg text-gray-400 line-through">
+                            {property.priceBeforeDiscountPerDay.toLocaleString('ar-DZ')} دج/يوم
+                          </div>
+                          <div className="text-3xl font-bold bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent">
+                            {property.pricePerDay.toLocaleString('ar-DZ')} 
+                            <span className="text-lg font-normal text-gray-600 mr-2">دج/يوم</span>
+                          </div>
+                          <div className="text-sm text-green-600 font-medium">
+                            وفر {((property.priceBeforeDiscountPerDay - property.pricePerDay).toLocaleString('ar-DZ'))} دج/يوم
+                          </div>
                         </div>
-                        <div className="text-4xl font-bold bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent">
+                      ) : (
+                        <div className="text-3xl font-bold bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent">
                           {property.pricePerDay.toLocaleString('ar-DZ')} 
-                          <span className="text-xl font-normal text-gray-600 mr-2">دج/يوم</span>
+                          <span className="text-lg font-normal text-gray-600 mr-2">دج/يوم</span>
                         </div>
-                        <div className="text-sm text-green-600 font-medium">
-                          وفر {((property.priceBeforeDiscountPerDay - property.pricePerDay).toLocaleString('ar-DZ'))} دج/يوم
-                        </div>
+                      )}
+                      <div className="text-sm text-gray-600 mt-2 font-medium">
+                        {(property.pricePerDay * 30).toLocaleString('ar-DZ')} دج/شهرياً (تقريباً)
                       </div>
-                    ) : (
-                      <div className="text-4xl font-bold bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent">
-                        {property.pricePerDay.toLocaleString('ar-DZ')} 
-                        <span className="text-xl font-normal text-gray-600 mr-2">دج/يوم</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="bg-white/60 rounded-3xl p-6 backdrop-blur-sm border border-white/50">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">الوصف</h3>
+                  <p className="text-gray-700 leading-relaxed text-center text-base font-medium">
+                    {property.description}
+                  </p>
+                </div>
+
+                {/* Office Information */}
+                <div className="bg-gradient-to-br from-gray-50/80 to-gray-100/80 rounded-3xl p-6 border border-white/50 shadow-2xl backdrop-blur-sm">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">معلومات المكتب</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50">
+                      <Home className="w-5 h-5 mr-3 text-[#24697f]" />
+                      <div className="text-center">
+                        <div className="font-bold text-lg">{property.officeId.name}</div>
+                        <div className="text-sm text-gray-500 font-medium">وكالة عقارية معتمدة</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50">
+                      <MapPin className="w-5 h-5 mr-3 text-[#24697f]" />
+                      <span className="font-medium text-lg">{property.wilayaId.name}</span>
+                    </div>
+                    {property.officeId.phone && (
+                      <a
+                        href={`tel:${property.officeId.phone}`}
+                        className="flex items-center justify-center text-green-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50 hover:bg-green-50/80 transition-all duration-300 hover:scale-105"
+                      >
+                        <Phone className="w-5 h-5 mr-3 text-green-600" />
+                        <div className="text-center">
+                          <div className="font-bold text-lg">{property.officeId.phone}</div>
+                          <div className="text-sm text-green-600 font-medium">اتصل مباشرة</div>
+                        </div>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-6">
+                {/* Property Features */}
+                <div className="bg-gradient-to-br from-[#24697f]/10 via-teal-500/10 to-pink-500/10 rounded-3xl p-6 border border-[#24697f]/20 shadow-2xl backdrop-blur-sm">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">المميزات</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    {property.bedrooms && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Users className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">{property.bedrooms} غرف نوم</span>
                       </div>
                     )}
-                    <div className="text-sm text-gray-600 mt-2 font-medium">
-                      {(property.pricePerDay * 30).toLocaleString('ar-DZ')} دج/شهرياً (تقريباً)
-                    </div>
+                    {property.bathrooms && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Bath className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">{property.bathrooms} حمامات</span>
+                      </div>
+                    )}
+                    {property.area && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Square className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">{property.area} م²</span>
+                      </div>
+                    )}
+                    {property.propertyType && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Home className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">{property.propertyType}</span>
+                      </div>
+                    )}
+                    {property.capacity && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Users className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">{property.capacity} شخص</span>
+                      </div>
+                    )}
+                    {property.targetAudience && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Users className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">
+                          {property.targetAudience === 'family' ? 'عائلات' : 
+                           property.targetAudience === 'normal' ? 'أفراد' : 'عائلات وأفراد'}
+                        </span>
+                      </div>
+                    )}
+                    {property.reserveTheProperty && (
+                      <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
+                        <Calendar className="w-5 h-5 ml-2 text-[#24697f]" />
+                        <span className="font-medium text-sm">
+                          {property.reserveTheProperty === 'daily' ? 'حجز يومي' : 'حجز شهري'}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-center">
-                    <div className="flex items-center justify-center mb-2">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-5 h-5 fill-yellow-400 text-yellow-400 drop-shadow-sm" />
+                </div>
+
+                {/* Amenities */}
+                {property.amenities && property.amenities.length > 0 && (
+                  <div className="bg-white/60 rounded-3xl p-6 backdrop-blur-sm border border-white/50">
+                    <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">المرافق</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {property.amenities.map((amenity, index) => (
+                        <div key={index} className="flex items-center justify-center text-gray-700 bg-white/70 rounded-xl p-3 backdrop-blur-sm hover:bg-white/80 transition-all duration-300 border border-white/50">
+                          <Check className="w-4 h-4 ml-2 text-teal-500 flex-shrink-0" />
+                          <span className="text-sm font-medium">{amenity}</span>
+                        </div>
                       ))}
                     </div>
-                    <div className="text-sm text-gray-600 font-medium">ممتاز</div>
                   </div>
-                </div>
+                )}
 
-                {/* Property Features */}
-                <div className="grid grid-cols-2 gap-4 mt-8">
-                  {property.bedrooms && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Users className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">{property.bedrooms} غرف نوم</span>
-                    </div>
-                  )}
-                  {property.bathrooms && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Bath className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">{property.bathrooms} حمامات</span>
-                    </div>
-                  )}
-                  {property.area && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Square className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">{property.area} م²</span>
-                    </div>
-                  )}
-                  {property.propertyType && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Home className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">{property.propertyType}</span>
-                    </div>
-                  )}
-                  {property.capacity && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Users className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">{property.capacity} شخص</span>
-                    </div>
-                  )}
-                  {property.targetAudience && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Users className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">
-                        {property.targetAudience === 'family' ? 'عائلات' : 
-                         property.targetAudience === 'normal' ? 'أفراد' : 'عائلات وأفراد'}
-                      </span>
-                    </div>
-                  )}
-                  {property.reserveTheProperty && (
-                    <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-3 backdrop-blur-sm border border-white/50">
-                      <Calendar className="w-5 h-5 ml-2 text-[#24697f]" />
-                      <span className="font-medium text-sm">
-                        {property.reserveTheProperty === 'daily' ? 'حجز يومي' : 'حجز شهري'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="bg-white/60 rounded-3xl p-6 backdrop-blur-sm border border-white/50">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">الوصف</h3>
-                <p className="text-gray-700 leading-relaxed text-center text-base font-medium">
-                  {property.description}
-                </p>
-              </div>
-
-              {/* Amenities */}
-              {property.amenities && property.amenities.length > 0 && (
-                <div className="bg-white/60 rounded-3xl p-6 backdrop-blur-sm border border-white/50">
-                  <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">المرافق</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {property.amenities.map((amenity, index) => (
-                      <div key={index} className="flex items-center justify-center text-gray-700 bg-white/70 rounded-xl p-3 backdrop-blur-sm hover:bg-white/80 transition-all duration-300 border border-white/50">
-                        <Check className="w-4 h-4 ml-2 text-teal-500 flex-shrink-0" />
-                        <span className="text-sm font-medium">{amenity}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Office Information */}
-              <div className="bg-gradient-to-br from-gray-50/80 to-gray-100/80 rounded-3xl p-6 border border-white/50 shadow-2xl backdrop-blur-sm">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-[#24697f] to-teal-600 bg-clip-text text-transparent text-right">معلومات المكتب</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50">
-                    <Home className="w-5 h-5 mr-3 text-[#24697f]" />
-                    <div className="text-center">
-                      <div className="font-bold text-lg">{property.officeId.name}</div>
-                      <div className="text-sm text-gray-500 font-medium">وكالة عقارية معتمدة</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50">
-                    <MapPin className="w-5 h-5 mr-3 text-[#24697f]" />
-                    <span className="font-medium text-lg">{property.wilayaId.name}</span>
-                  </div>
-                  {property.officeId.phone && (
-                    <a
-                      href={`tel:${property.officeId.phone}`}
-                      className="flex items-center justify-center text-green-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50 hover:bg-green-50/80 transition-all duration-300 hover:scale-105"
-                    >
-                      <Phone className="w-5 h-5 mr-3 text-green-600" />
-                      <div className="text-center">
-                        <div className="font-bold text-lg">{property.officeId.phone}</div>
-                        <div className="text-sm text-green-600 font-medium">اتصل مباشرة</div>
-                      </div>
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Google Maps Location */}
-              {property.locationGoogleMapLink && (
-                <div className="bg-gradient-to-br from-blue-50/80 to-blue-100/80 rounded-3xl p-6 border border-blue-200/50 shadow-2xl backdrop-blur-sm">
-                  <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent text-right">الموقع على الخريطة</h3>
-                  <div className="space-y-3">
-                    <a
-                      href={property.locationGoogleMapLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center text-blue-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50 hover:bg-white/80 transition-all duration-300 hover:scale-105"
-                    >
-                      <MapPin className="w-5 h-5 mr-3 text-blue-600" />
-                      <div className="text-center">
-                        <div className="font-bold text-lg">عرض الموقع</div>
-                        <div className="text-sm text-blue-600 font-medium">افتح في خرائط جوجل</div>
-                      </div>
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {/* Availability Status */}
-              <div className={`rounded-3xl p-6 border shadow-2xl backdrop-blur-sm transition-all duration-300 ${
-                property.isReserved 
-                  ? 'bg-gradient-to-br from-pink-50/80 to-pink-100/80 border-pink-200/50' 
-                  : property.available 
-                    ? 'bg-gradient-to-br from-teal-50/80 to-teal-100/80 border-teal-200/50' 
-                    : 'bg-gradient-to-br from-gray-50/80 to-gray-100/80 border-gray-200/50'
-              }`}>
-                <div className="flex items-center justify-center">
-                  {property.isReserved ? (
-                    <>
-                      <Calendar className="w-5 h-5 ml-3 text-pink-500" />
-                      <div className="text-center">
-                        <div className="font-bold text-lg text-pink-800">محجوز حالياً</div>
-                        <div className="text-sm text-pink-600 mt-1">
-                          يمكنك تقديم طلب حجز وسيتواصل معك المكتب في حال توفرت فترة زمنية مناسبة
+                {/* Google Maps Location */}
+                {property.locationGoogleMapLink && (
+                  <div className="bg-gradient-to-br from-blue-50/80 to-blue-100/80 rounded-3xl p-6 border border-blue-200/50 shadow-2xl backdrop-blur-sm">
+                    <h3 className="text-xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent text-right">الموقع على الخريطة</h3>
+                    <div className="space-y-3">
+                      <a
+                        href={property.locationGoogleMapLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center text-blue-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50 hover:bg-white/80 transition-all duration-300 hover:scale-105"
+                      >
+                        <MapPin className="w-5 h-5 mr-3 text-blue-600" />
+                        <div className="text-center">
+                          <div className="font-bold text-lg">عرض الموقع</div>
+                          <div className="text-sm text-blue-600 font-medium">افتح في خرائط جوجل</div>
                         </div>
-                        {property.reservationEndDate && (
-                          <div className="text-sm text-pink-500 mt-2 font-medium">
-                            تنتهي الحجز: {new Date(property.reservationEndDate).toLocaleDateString('ar-DZ', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
+                      </a>
+                    </div>
+                    
+                    {/* Location Preview */}
+                    <div className="mt-6">
+                      <GoogleMapPreview 
+                        mapUrl={property.locationGoogleMapLink}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Availability Status */}
+                <div className={`rounded-3xl p-6 border shadow-2xl backdrop-blur-sm transition-all duration-300 ${
+                  property.isReserved 
+                    ? 'bg-gradient-to-br from-pink-50/80 to-pink-100/80 border-pink-200/50' 
+                    : property.available 
+                      ? 'bg-gradient-to-br from-teal-50/80 to-teal-100/80 border-teal-200/50' 
+                      : 'bg-gradient-to-br from-gray-50/80 to-gray-100/80 border-gray-200/50'
+                }`}>
+                  <div className="flex items-center justify-center">
+                    {property.isReserved ? (
+                      <>
+                        <Calendar className="w-5 h-5 ml-3 text-pink-500" />
+                        <div className="text-center">
+                          <div className="font-bold text-lg text-pink-800">محجوز حالياً</div>
+                          <div className="text-sm text-pink-600 mt-1">
+                            يمكنك تقديم طلب حجز وسيتواصل معك المكتب في حال توفرت فترة زمنية مناسبة
                           </div>
-                        )}
-                      </div>
-                    </>
-                  ) : property.available ? (
-                    <>
-                      <Check className="w-5 h-5 ml-3 text-teal-500" />
-                      <div className="text-center">
-                        <div className="font-bold text-lg text-teal-800">متاح للحجز</div>
-                        <div className="text-sm text-teal-600 mt-1">يمكنك حجز هذا العقار فوراً</div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <X className="w-5 h-5 ml-3 text-gray-500" />
-                      <div className="text-center">
-                        <div className="font-bold text-lg text-gray-800">غير متاح</div>
-                        <div className="text-sm text-gray-600 mt-1">هذا العقار غير متاح للحجز حالياً</div>
-                      </div>
-                    </>
-                  )}
+                          {property.reservationEndDate && (
+                            <div className="text-sm text-pink-500 mt-2 font-medium">
+                              تنتهي الحجز: {new Date(property.reservationEndDate).toLocaleDateString('ar-DZ', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : property.available ? (
+                      <>
+                        <Check className="w-5 h-5 ml-3 text-teal-500" />
+                        <div className="text-center">
+                          <div className="font-bold text-lg text-teal-800">متاح للحجز</div>
+                          <div className="text-sm text-teal-600 mt-1">يمكنك حجز هذا العقار فوراً</div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <X className="w-5 h-5 ml-3 text-gray-500" />
+                        <div className="text-center">
+                          <div className="font-bold text-lg text-gray-800">غير متاح</div>
+                          <div className="text-sm text-gray-600 mt-1">هذا العقار غير متاح للحجز حالياً</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

@@ -299,6 +299,11 @@ export default function Dashboard() {
   const [selectedPropertyForReservationsList, setSelectedPropertyForReservationsList] = useState<string>('');
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
   const [preSelectedDates, setPreSelectedDates] = useState<{ startDate: Date; endDate: Date } | null>(null);
+  const [clearReservationsConfirmation, setClearReservationsConfirmation] = useState<{
+    propertyId: string | null;
+    propertyTitle: string | null;
+    reservationCount: number | null;
+  }>({ propertyId: null, propertyTitle: null, reservationCount: null });
   
   // Pre-filled reservation data from orders
   const [preFilledReservationData, setPreFilledReservationData] = useState<any>(null);
@@ -391,9 +396,30 @@ export default function Dashboard() {
   // Debug edit reservation modal
   useEffect(() => {
     if (showEditReservationModal && editingReservation) {
-      
       const foundProperty = properties.find((p: any) => p._id === editingReservation?.propertyId);
-          }
+      console.log('Edit modal opened with property:', foundProperty);
+    }
+  }, [showEditReservationModal, editingReservation, properties]);
+
+  // Auto-set marital status for family properties in edit modal
+  useEffect(() => {
+    if (showEditReservationModal && editingReservation) {
+      // Handle different property ID structures
+      const propertyId = typeof editingReservation?.propertyId === 'string' 
+        ? editingReservation?.propertyId 
+        : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+      
+      const property = properties.find((p: any) => p._id === propertyId);
+      const isFamilyProperty = property?.targetAudience === 'family';
+      
+      if (isFamilyProperty) {
+        // For family properties, ensure the form reflects married status
+        const isMarriedSelect = document.querySelector('select[name="isMarried"]') as HTMLSelectElement;
+        if (isMarriedSelect) {
+          isMarriedSelect.value = 'true';
+        }
+      }
+    }
   }, [showEditReservationModal, editingReservation, properties]);
 
   // Filter reservations based on selected wilaya and office
@@ -783,6 +809,21 @@ return true;
     }
   }, [activeTab]);
 
+  // Auto-set marital status for family properties
+  useEffect(() => {
+    if (selectedPropertyForReservation) {
+      const property = properties.find((p: any) => p._id === selectedPropertyForReservation);
+      const isFamilyProperty = property?.targetAudience === 'family';
+      
+      if (isFamilyProperty) {
+        setAddReservationForm(prev => ({
+          ...prev,
+          isMarried: true
+        }));
+      }
+    }
+  }, [selectedPropertyForReservation, properties]);
+
   // Real-time property status checking for admin dashboard
   useEffect(() => {
     if (!authChecked) return;
@@ -1138,7 +1179,7 @@ setOrders(orders);
             const property = properties.find(p => p._id === propertyId);
             if (property) {
               // Pre-fill the reservation form with order data
-              const isFamilyProperty = property?.propertyType === 'home' || property?.propertyType === 'villa';
+              const isFamilyProperty = property?.targetAudience === 'family';
               setAddReservationForm({
                 totalPrice: '0',
                 paidAmount: '0',
@@ -2000,7 +2041,7 @@ return err.msg || JSON.stringify(err);
 
   const resetAddReservationForm = () => {
     const property = properties.find((p: any) => p._id === selectedPropertyForReservation);
-    const isFamilyProperty = property?.propertyType === 'home' || property?.propertyType === 'villa';
+    const isFamilyProperty = property?.targetAudience === 'family';
     
     setAddReservationForm({
       totalPrice: '',
@@ -2095,6 +2136,82 @@ return err.msg || JSON.stringify(err);
       }
     } catch (error) {
       console.error('Failed to delete reservation:', error);
+    }
+  };
+
+  const handleClearAllReservations = async (propertyId: string, propertyTitle: string) => {
+    // Count reservations for this property
+    const propertyReservations = reservations.filter((r: any) => {
+      const reservationPropertyId = typeof r.propertyId === 'string' 
+        ? r.propertyId 
+        : r.propertyId?._id || r.propertyId.id;
+      return reservationPropertyId === propertyId;
+    });
+
+    setClearReservationsConfirmation({
+      propertyId,
+      propertyTitle,
+      reservationCount: propertyReservations.length
+    });
+  };
+
+  const confirmClearAllReservations = async () => {
+    const { propertyId } = clearReservationsConfirmation;
+    if (!propertyId) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Update property to clear reservationIds and set isReserved to false
+      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/properties/${propertyId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reservationIds: [],
+          isReserved: false,
+          available: true
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Delete all reservations for this property
+        const propertyReservations = reservations.filter((r: any) => {
+          const reservationPropertyId = typeof r.propertyId === 'string' 
+            ? r.propertyId 
+            : r.propertyId?._id || r.propertyId.id;
+          return reservationPropertyId === propertyId;
+        });
+
+        // Delete each reservation
+        for (const reservation of propertyReservations) {
+          await fetch(`https://dmtart.pro/mimorent/api/admin/reservations/${reservation._id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+        }
+
+        // Show success toast
+        addToast('تم إنهاء جميع الحجوزات بنجاح', 'success');
+        
+        // Refresh data
+        await fetchProperties();
+        await fetchReservations();
+        
+        // Close modal
+        setClearReservationsConfirmation({ propertyId: null, propertyTitle: null, reservationCount: null });
+      } else {
+        addToast('فشل إنهاء الحجوزات: ' + (data.message || 'خطأ غير معروف'), 'error');
+      }
+    } catch (error) {
+      console.error('Error clearing reservations:', error);
+      addToast('حدث خطأ. يرجى المحاولة مرة أخرى.', 'error');
     }
   };
 
@@ -6203,6 +6320,12 @@ openEditReservationModal(reservation);
         >
           عرض الحجوزات الأخرى
         </button>
+        <button
+          onClick={() => handleClearAllReservations(property._id, property.title)}
+          className="w-full px-4 py-2 bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white rounded-lg hover:from-[#dc2626] hover:to-[#b91c1c] transition-all cursor-pointer border-2 border-white/60"
+        >
+          جعل كل الحجوزات مكتملة
+        </button>
               </div>
     )}
     
@@ -6469,7 +6592,7 @@ openEditReservationModal(reservation);
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                   <span className="text-white/90">
-                    {property.propertyType === 'home' ? 'عائلات' : property.propertyType === 'villa' ? 'عائلات' : 'تجار'}
+                    {property.targetAudience === 'family' ? 'عائلات' : property.targetAudience === 'normal' ? 'أفراد' : 'الجميع'}
                   </span>
                 </div>
               </div>
@@ -6724,7 +6847,7 @@ setAddReservationForm(prev => ({
         <label className="block text-sm font-medium text-gray-700 mb-1">الحالة العائلية</label>
         {(() => {
           const property = properties.find((p: any) => p._id === selectedPropertyForReservation);
-          const isFamilyProperty = property?.propertyType === 'home' || property?.propertyType === 'villa';
+          const isFamilyProperty = property?.targetAudience === 'family';
           
           if (isFamilyProperty) {
             // Auto-set to married for family properties
@@ -6974,20 +7097,74 @@ setShowContractModal(true);
         <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full blur-2xl"></div>
       </div>
       
-      <div className="relative flex items-center justify-between">
-        <h3 className="text-2xl font-bold text-white">تعديل الحجز</h3>
-        <button
-          onClick={() => {
-            setShowEditReservationModal(false);
-            setEditingReservation(null);
-            setReservationError(null);
-          }}
-          className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+      <div className="relative">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-2xl font-bold text-white">تعديل الحجز</h3>
+          <button
+            onClick={() => {
+              setShowEditReservationModal(false);
+              setEditingReservation(null);
+              setReservationError(null);
+            }}
+            className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        {/* Property Details */}
+        {(() => {
+          // Handle different property ID structures
+          const propertyId = typeof editingReservation?.propertyId === 'string' 
+            ? editingReservation?.propertyId 
+            : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+          
+          const property = properties.find((p: any) => p._id === propertyId);
+          if (!property) return null;
+          
+          return (
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+              <h4 className="text-lg font-semibold text-white mb-3">{property.title}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-white/90">{property.location}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                  <span className="text-white/90">{property.propertyType === 'home' ? 'منزل' : property.propertyType === 'villa' ? 'فيلا' : 'متجر'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-white/90">{property.reserveTheProperty === 'daily' ? 'يومي' : 'شهري'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-white/90">{property.pricePerDay} دج/{property.reserveTheProperty === 'daily' ? 'يوم' : 'شهر'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="text-white/90">
+                    {property.targetAudience === 'family' ? 'عائلات' : property.targetAudience === 'normal' ? 'أفراد' : 'الجميع'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
     
@@ -7043,7 +7220,14 @@ setShowContractModal(true);
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">العقار</label>
         <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg">
-          {properties.find((p: any) => p._id === editingReservation?.propertyId)?.title || 'العقار المحدد'}
+          {(() => {
+            // Handle different property ID structures
+            const propertyId = typeof editingReservation?.propertyId === 'string' 
+              ? editingReservation?.propertyId 
+              : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+            
+            return properties.find((p: any) => p._id === propertyId)?.title || 'العقار المحدد';
+          })()}
         </div>
       </div>
       
@@ -7192,15 +7376,36 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
       {/* New Fields */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">الحالة العائلية</label>
-        <select
-          name="isMarried"
-          required
-          defaultValue={editingReservation?.isMarried?.toString() || 'false'}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="false">أعزب</option>
-          <option value="true">متزوج</option>
-        </select>
+        {(() => {
+          // Handle different property ID structures
+          const propertyId = typeof editingReservation?.propertyId === 'string' 
+            ? editingReservation?.propertyId 
+            : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+          
+          const property = properties.find((p: any) => p._id === propertyId);
+          const isFamilyProperty = property?.targetAudience === 'family';
+          
+          if (isFamilyProperty) {
+            // Auto-set to married for family properties
+            return (
+              <div className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-700">
+                متزوج (تلقائي للعقارات العائلية)
+              </div>
+            );
+          }
+          
+          return (
+            <select
+              name="isMarried"
+              required
+              defaultValue={editingReservation?.isMarried?.toString() || 'false'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="false">أعزب</option>
+              <option value="true">متزوج</option>
+            </select>
+          );
+        })()}
       </div>
 
       <div>
@@ -9336,6 +9541,50 @@ onClick={(e) => e.stopPropagation()}
     </div>
   </div>
 </div>
+          )}
+
+          {/* Clear Reservations Confirmation Modal */}
+          {clearReservationsConfirmation.propertyId && (
+            <div 
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4"
+              onClick={() => setClearReservationsConfirmation({ propertyId: null, propertyTitle: null, reservationCount: null })}
+            >
+              <div 
+                className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-bold text-gray-800 mb-4">
+                  تأكيد إنهاء جميع الحجوزات
+                </h3>
+                
+                <div className="mb-4">
+                  <p className="text-gray-600 mb-2">
+                    هل أنت متأكد من إنهاء جميع حجوزات العقار التالي؟
+                  </p>
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="font-medium">{clearReservationsConfirmation.propertyTitle}</p>
+                    <p className="text-sm text-gray-600">
+                      عدد الحجوزات: {clearReservationsConfirmation.reservationCount}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col space-y-2">
+                  <button
+                    onClick={confirmClearAllReservations}
+                    className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    نعم، إنهاء جميع الحجوزات
+                  </button>
+                  <button
+                    onClick={() => setClearReservationsConfirmation({ propertyId: null, propertyTitle: null, reservationCount: null })}
+                    className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
           </div>
         </main>
