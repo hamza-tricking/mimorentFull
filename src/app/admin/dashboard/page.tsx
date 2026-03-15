@@ -240,6 +240,64 @@ export default function Dashboard() {
       monthlyInput.value = monthlyPrice;
     }
   };
+
+  // Validation function for monthly reservation dates
+  const validateMonthlyReservation = (startDate: Date, endDate: Date, propertyId: string): { isValid: boolean; message?: string } => {
+    const property = properties.find((p: any) => p._id === propertyId);
+    
+    // If property is daily, no monthly validation needed
+    if (!property || property.reserveTheProperty !== 'monthly') {
+      return { isValid: true };
+    }
+    
+    // For monthly reservations, check if end date is exactly one or more months after start date
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Calculate the difference in months
+    const monthsDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    const dayDiff = end.getDate() - start.getDate();
+    
+    // Check if it's exactly at least one month
+    if (monthsDiff < 1) {
+      return { 
+        isValid: false, 
+        message: 'فترة الحجز غير صحيحة. يجب أن يكون تاريخ الانتهاء بعد شهر واحد على الأقل من تاريخ البدء للحجوزات الشهرية.' 
+      };
+    }
+    
+    // For exactly one month, day should be the same
+    if (monthsDiff === 1 && dayDiff !== 0) {
+      return { 
+        isValid: false, 
+        message: 'فترة الحجز غير صحيحة. للحجز الشهري، يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر التالي (مثال: 03/15/2026 → 04/15/2026).' 
+      };
+    }
+    
+    // For multiple months, day should be the same
+    if (monthsDiff > 1 && dayDiff !== 0) {
+      return { 
+        isValid: false, 
+        message: 'فترة الحجز غير صحيحة. للحجز الشهري، يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر المناسب (مثال: 03/15/2026 → 06/15/2026 لمدة 3 أشهر).' 
+      };
+    }
+    
+    return { isValid: true };
+  };
+
+  // Function to calculate end date for monthly reservations
+  const calculateMonthlyEndDate = (startDate: string, months: number = 1): string => {
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+    
+    // Handle edge cases for end of month (e.g., Jan 31 → Feb 28/29)
+    if (start.getDate() !== end.getDate()) {
+      end.setDate(0); // Set to last day of previous month
+    }
+    
+    return end.toISOString().split('T')[0];
+  };
   
   const handleAddMonthlyDiscountPriceChange = (monthlyDiscountPrice: string) => {
     setAddMonthlyDiscountPrice(monthlyDiscountPrice);
@@ -6632,6 +6690,13 @@ openEditReservationModal(reservation);
           return;
         }
         
+        // Monthly reservation validation
+        const monthlyValidation = validateMonthlyReservation(startDate, endDate, selectedPropertyForReservation);
+        if (!monthlyValidation.isValid) {
+          setReservationError(monthlyValidation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
+          return;
+        }
+        
         const reservationData = {
           propertyId: selectedPropertyForReservation,
           customerName: formData.get('customerName') as string,
@@ -6715,6 +6780,19 @@ required
 defaultValue={preSelectedDates?.startDate ? 
                 new Date(preSelectedDates.startDate.getFullYear(), preSelectedDates.startDate.getMonth(), preSelectedDates.startDate.getDate()).toLocaleDateString('en-CA') : 
                 preFilledReservationData?.startDate || new Date().toLocaleDateString('en-CA')}
+onChange={(e) => {
+  const startDate = e.target.value;
+  const property = properties.find((p: any) => p._id === selectedPropertyForReservation);
+  
+  // Auto-calculate end date for monthly properties
+  if (property && property.reserveTheProperty === 'monthly' && startDate) {
+    const endDate = calculateMonthlyEndDate(startDate, 1);
+    const endDateInput = document.querySelector('input[name="endDate"]') as HTMLInputElement;
+    if (endDateInput) {
+      endDateInput.value = endDate;
+    }
+  }
+}}
 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -6728,6 +6806,20 @@ required
 defaultValue={preSelectedDates?.endDate ? 
                 new Date(preSelectedDates.endDate.getFullYear(), preSelectedDates.endDate.getMonth(), preSelectedDates.endDate.getDate()).toLocaleDateString('en-CA') : 
                 preFilledReservationData?.endDate || new Date().toLocaleDateString('en-CA')}
+onChange={(e) => {
+  const endDate = e.target.value;
+  const startDateInput = document.querySelector('input[name="startDate"]') as HTMLInputElement;
+  const startDate = startDateInput?.value;
+  
+  if (startDate && endDate) {
+    const validation = validateMonthlyReservation(new Date(startDate), new Date(endDate), selectedPropertyForReservation);
+    if (!validation.isValid) {
+      setReservationError(validation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
+    } else {
+      setReservationError(null);
+    }
+  }
+}}
 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -7195,6 +7287,18 @@ setShowContractModal(true);
           return;
         }
         
+        // Handle different property ID structures for validation
+        const propertyId = typeof editingReservation?.propertyId === 'string' 
+          ? editingReservation?.propertyId 
+          : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+        
+        // Monthly reservation validation
+        const monthlyValidation = validateMonthlyReservation(startDate, endDate, propertyId);
+        if (!monthlyValidation.isValid) {
+          setReservationError(monthlyValidation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
+          return;
+        }
+        
         const reservationData = {
           propertyId: editingReservation?.propertyId || '',
           customerName: formData.get('customerName') as string,
@@ -7263,6 +7367,23 @@ type="date"
 name="startDate"
 required
 defaultValue={editingReservation?.startDate ? new Date(editingReservation.startDate).toLocaleDateString('en-CA') : new Date().toLocaleDateString('en-CA')}
+onChange={(e) => {
+  const startDate = e.target.value;
+  // Handle different property ID structures
+  const propertyId = typeof editingReservation?.propertyId === 'string' 
+    ? editingReservation?.propertyId 
+    : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+  const property = properties.find((p: any) => p._id === propertyId);
+  
+  // Auto-calculate end date for monthly properties
+  if (property && property.reserveTheProperty === 'monthly' && startDate) {
+    const endDate = calculateMonthlyEndDate(startDate, 1);
+    const endDateInput = document.querySelector('form[name="editReservationForm"] input[name="endDate"]') as HTMLInputElement;
+    if (endDateInput) {
+      endDateInput.value = endDate;
+    }
+  }
+}}
 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -7274,6 +7395,25 @@ type="date"
 name="endDate"
 required
 defaultValue={editingReservation?.endDate ? new Date(editingReservation.endDate).toLocaleDateString('en-CA') : new Date().toLocaleDateString('en-CA')}
+onChange={(e) => {
+  const endDate = e.target.value;
+  const startDateInput = e.target.form?.querySelector('input[name="startDate"]') as HTMLInputElement;
+  const startDate = startDateInput?.value;
+  
+  // Handle different property ID structures
+  const propertyId = typeof editingReservation?.propertyId === 'string' 
+    ? editingReservation?.propertyId 
+    : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+  
+  if (startDate && endDate) {
+    const validation = validateMonthlyReservation(new Date(startDate), new Date(endDate), propertyId);
+    if (!validation.isValid) {
+      setReservationError(validation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
+    } else {
+      setReservationError(null);
+    }
+  }
+}}
 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
