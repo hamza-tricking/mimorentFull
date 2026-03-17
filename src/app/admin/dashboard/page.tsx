@@ -503,6 +503,7 @@ export default function Dashboard() {
   // Advanced filters for reservations
   const [reservationCapacity, setReservationCapacity] = useState<string>('');
   const [reservationTargetAudience, setReservationTargetAudience] = useState<string>('');
+  const [reservationPropertyType, setReservationPropertyType] = useState<string>('');
   const [reservationPriceRange, setReservationPriceRange] = useState({ min: '', max: '' });
   const [reservationType, setReservationType] = useState<string>('');
   const [reservationDateRange, setReservationDateRange] = useState({ startDate: '', endDate: '' });
@@ -6336,6 +6337,7 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
             onClick={() => {
               setReservationCapacity('');
               setReservationTargetAudience('');
+              setReservationPropertyType('');
               setReservationPriceRange({ min: '', max: '' });
               setReservationType('');
               setReservationDateRange({ startDate: '', endDate: '' });
@@ -6346,7 +6348,7 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* Capacity Filter */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-white/80">السعة القصوى</label>
@@ -6380,6 +6382,21 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
               <option value="family">عائلي</option>
               <option value="normal">عادي</option>
               <option value="both">كلاهما</option>
+            </select>
+          </div>
+
+          {/* Property Type Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">نوع العقار</label>
+            <select
+              value={reservationPropertyType}
+              onChange={(e) => setReservationPropertyType(e.target.value)}
+              className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">الكل</option>
+              <option value="home">منزل</option>
+              <option value="villa">فيلا</option>
+              <option value="shop">غاراج</option>
             </select>
           </div>
 
@@ -6482,6 +6499,11 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
               return false;
             }
 
+            // Property type filter
+            if (reservationPropertyType && property.propertyType !== reservationPropertyType) {
+              return false;
+            }
+
             // Price range filter
             if (reservationPriceRange.min && (!property.pricePerDay || property.pricePerDay < parseInt(reservationPriceRange.min))) {
               return false;
@@ -6510,13 +6532,8 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
                 return false; // Invalid date range
               }
 
-              // Debug: Check what reservations we have
-              console.log('All reservations count:', reservations.length);
-              console.log('Property reservationIds:', property.reservationIds);
-
               // If property has no reservations, it's available
               if (!property.reservationIds || property.reservationIds.length === 0) {
-                console.log('Property has no reservationIds - showing as available');
                 return true; // Available - no reservations
               }
 
@@ -6527,19 +6544,11 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
                 
                 const reservation = reservations.find((r: any) => r._id === reservationId);
                 if (!reservation) {
-                  console.log('Reservation not found for ID:', reservationId);
                   return false;
                 }
 
-                // Debug logging
-                console.log('Checking reservation:', reservation);
-                console.log('Filter dates:', start, 'to', end);
-                console.log('Reservation dates:', new Date(reservation.startDate), 'to', new Date(reservation.endDate));
-                console.log('Reservation status:', reservation.status);
-
                 // Only check confirmed/pending reservations
                 if (!['pending', 'confirmed'].includes(reservation.status)) {
-                  console.log('Skipping reservation - status:', reservation.status);
                   return false;
                 }
 
@@ -6547,19 +6556,12 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
                 const reservationEnd = new Date(reservation.endDate);
 
                 // Check if reservation overlaps with filter date range
-                const overlaps = reservationStart <= end && reservationEnd >= start;
-                console.log('Overlaps:', overlaps);
-                return overlaps;
+                return reservationStart <= end && reservationEnd >= start;
               });
-
-              console.log('Property:', property.title, 'Overlapping reservations:', overlappingReservations.length);
 
               // If no overlapping reservations, property is available for these dates
               if (overlappingReservations.length > 0) {
-                console.log('Hiding property - has overlapping reservations');
                 return false; // Has overlapping reservations - not available
-              } else {
-                console.log('Showing property - no overlapping reservations');
               }
             }
 

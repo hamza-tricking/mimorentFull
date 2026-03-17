@@ -65,6 +65,7 @@ const PropertySearch = () => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [targetAudience, setTargetAudience] = useState<string>('');
   const [capacity, setCapacity] = useState<string>('');
+  const [propertyType, setPropertyType] = useState<string>('');
   const [priceRange, setPriceRange] = useState({ min: '', max: '' });
   const [reserveType, setReserveType] = useState<string>('');
   const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
@@ -99,10 +100,14 @@ const PropertySearch = () => {
       // Build query parameters
       const params = new URLSearchParams();
       
+      // Add basic filters
       if (searchTerm) params.append('search', searchTerm);
       if (selectedWilaya) params.append('wilayaId', selectedWilaya);
+      
+      // Add advanced filters
       if (targetAudience) params.append('targetAudience', targetAudience);
       if (capacity) params.append('capacity', capacity);
+      if (propertyType) params.append('propertyType', propertyType);
       if (priceRange.min) params.append('minPrice', priceRange.min);
       if (priceRange.max) params.append('maxPrice', priceRange.max);
       if (reserveType) params.append('reserveType', reserveType);
@@ -113,6 +118,13 @@ const PropertySearch = () => {
       console.log('Fetching from public properties endpoint:', url);
       
       const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.error('HTTP Error:', response.status, response.statusText);
+        setProperties([]);
+        return;
+      }
+      
       const data = await response.json();
       
       console.log('API Response:', data);
@@ -120,7 +132,7 @@ const PropertySearch = () => {
       if (data.success) {
         setProperties(data.data.properties || []);
       } else {
-        console.error('API Error:', data);
+        console.error('API Error:', data.message || data.error || 'Unknown error');
         setProperties([]);
       }
     } catch (error) {
@@ -134,7 +146,7 @@ const PropertySearch = () => {
     if (!loading) {
       fetchProperties();
     }
-  }, [searchTerm, selectedWilaya, targetAudience, capacity, priceRange, reserveType, dateRange]);
+  }, [searchTerm, selectedWilaya, targetAudience, capacity, propertyType, priceRange, reserveType, dateRange]);
 
   // Function to calculate end date for monthly reservations (same as admin dashboard)
   const calculateMonthlyEndDate = (startDate: string, months: number = 1): string => {
@@ -499,7 +511,7 @@ const PropertySearch = () => {
                     <p className="text-sm text-gray-600">استخدم الفلاتر التالية للعثور على العقار المثالي لك</p>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {/* Target Audience */}
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 flex items-center">
@@ -551,6 +563,33 @@ const PropertySearch = () => {
                           <option value="6">6 شخص</option>
                           <option value="8">8 شخص</option>
                           <option value="10+">10+ شخص</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Property Type */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Home className="w-4 h-4 mr-2 text-purple-500" />
+                        نوع العقار
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Home className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                        <select
+                          value={propertyType}
+                          onChange={(e) => setPropertyType(e.target.value)}
+                          className="relative w-full pl-10 pr-8 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm"
+                        >
+                          <option value="">الكل</option>
+                          <option value="home">منزل</option>
+                          <option value="villa">فيلا</option>
+                          <option value="shop">غاراج</option>
                         </select>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -751,6 +790,7 @@ const PropertySearch = () => {
                         setSelectedWilaya('');
                         setTargetAudience('');
                         setCapacity('');
+                        setPropertyType('');
                         setPriceRange({ min: '', max: '' });
                         setReserveType('');
                         setDateRange({ startDate: '', endDate: '' });
@@ -783,6 +823,7 @@ const PropertySearch = () => {
                   setSelectedWilaya('');
                   setTargetAudience('');
                   setCapacity('');
+                  setPropertyType('');
                   setPriceRange({ min: '', max: '' });
                   setReserveType('');
                   setDateRange({ startDate: '', endDate: '' });
@@ -920,6 +961,19 @@ const PropertySearch = () => {
                     }`}>
                       <Calendar className="w-3 h-3 mr-1" />
                       {(property as any).reserveTheProperty === 'daily' ? 'يومي' : 'شهري'}
+                    </span>
+                    
+                    {/* Property Type Tag */}
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+                      (property as any).propertyType === 'home'
+                        ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                        : (property as any).propertyType === 'villa'
+                        ? 'bg-pink-100 text-pink-700 border-pink-200'
+                        : 'bg-gray-100 text-gray-700 border-gray-200'
+                    }`}>
+                      <Home className="w-3 h-3 mr-1" />
+                      {(property as any).propertyType === 'home' ? 'منزل' : 
+                       (property as any).propertyType === 'villa' ? 'فيلا' : 'غاراج'}
                     </span>
                   </div>
                   

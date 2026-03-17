@@ -157,6 +157,13 @@ export default function EmployerDashboard() {
     reservationCount: number | null;
   }>({ propertyId: null, propertyTitle: null, reservationCount: null });
 
+  // Advanced filters for properties
+  const [propertyCapacity, setPropertyCapacity] = useState<string>('');
+  const [propertyTargetAudience, setPropertyTargetAudience] = useState<string>('');
+  const [propertyPriceRange, setPropertyPriceRange] = useState({ min: '', max: '' });
+  const [propertyType, setPropertyType] = useState<string>('');
+  const [propertyDateRange, setPropertyDateRange] = useState({ startDate: '', endDate: '' });
+
   // Form states
   const [formData, setFormData] = useState({
     customerName: '',
@@ -1792,8 +1799,209 @@ export default function EmployerDashboard() {
               </div>
             </div>
 
+            {/* Advanced Filters for Properties */}
+            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">الفلاتر المتقدمة</h3>
+                <button
+                  onClick={() => {
+                    setPropertyCapacity('');
+                    setPropertyTargetAudience('');
+                    setPropertyPriceRange({ min: '', max: '' });
+                    setPropertyType('');
+                    setPropertyDateRange({ startDate: '', endDate: '' });
+                  }}
+                  className="text-sm text-white/80 hover:text-white transition-colors"
+                >
+                  مسح الفلاتر
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Capacity Filter */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/80">السعة القصوى</label>
+                  <select
+                    value={propertyCapacity}
+                    onChange={(e) => setPropertyCapacity(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">الكل</option>
+                    <option value="unspecified">غير محدد</option>
+                    <option value="1">1 شخص</option>
+                    <option value="2">2 شخص</option>
+                    <option value="3">3 أشخاص</option>
+                    <option value="4">4 أشخاص</option>
+                    <option value="5">5 أشخاص</option>
+                    <option value="6">6 أشخاص</option>
+                    <option value="8">8 أشخاص</option>
+                    <option value="10+">10+ شخص</option>
+                  </select>
+                </div>
+
+                {/* Target Audience Filter */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/80">الجمهور المستهدف</label>
+                  <select
+                    value={propertyTargetAudience}
+                    onChange={(e) => setPropertyTargetAudience(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">الكل</option>
+                    <option value="family">عائلي</option>
+                    <option value="normal">عادي</option>
+                    <option value="both">كلاهما</option>
+                  </select>
+                </div>
+
+                {/* Price Range Filter */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/80">نطاق السعر</label>
+                  <div className="flex flex-col space-y-2">
+                    <input
+                      type="number"
+                      placeholder="الحد الأدنى"
+                      value={propertyPriceRange.min}
+                      onChange={(e) => setPropertyPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <input
+                      type="number"
+                      placeholder="الحد الأعلى"
+                      value={propertyPriceRange.max}
+                      onChange={(e) => setPropertyPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Property Type Filter */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/80">نوع العقار</label>
+                  <select
+                    value={propertyType}
+                    onChange={(e) => setPropertyType(e.target.value)}
+                    className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">الكل</option>
+                    <option value="home">منزل</option>
+                    <option value="villa">فيلا</option>
+                    <option value="shop">غاراج</option>
+                  </select>
+                </div>
+
+                {/* Date Range Filter */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/80">نطاق التاريخ</label>
+                  <div className="flex flex-col space-y-2">
+                    <input
+                      type="date"
+                      placeholder="تاريخ البدء"
+                      value={propertyDateRange.startDate}
+                      onChange={(e) => setPropertyDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <input
+                      type="date"
+                      placeholder="تاريخ الانتهاء"
+                      value={propertyDateRange.endDate}
+                      onChange={(e) => setPropertyDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties.map((property) => {
+              {properties
+                .filter((property: any) => {
+                  // Capacity filter
+                  if (propertyCapacity) {
+                    if (propertyCapacity === 'unspecified') {
+                      if (property.capacity !== undefined && property.capacity !== null && property.capacity !== '') {
+                        return false;
+                      }
+                    } else if (propertyCapacity === '10+') {
+                      if (!property.capacity || property.capacity < 10) {
+                        return false;
+                      }
+                    } else {
+                      if (property.capacity !== parseInt(propertyCapacity)) {
+                        return false;
+                      }
+                    }
+                  }
+
+                  // Target audience filter
+                  if (propertyTargetAudience && property.targetAudience !== propertyTargetAudience) {
+                    return false;
+                  }
+
+                  // Price range filter
+                  if (propertyPriceRange.min && (!property.pricePerDay || property.pricePerDay < parseInt(propertyPriceRange.min))) {
+                    return false;
+                  }
+                  if (propertyPriceRange.max && (!property.pricePerDay || property.pricePerDay > parseInt(propertyPriceRange.max))) {
+                    return false;
+                  }
+
+                  // Property type filter
+                  if (propertyType && property.propertyType !== propertyType) {
+                    return false;
+                  }
+
+                  // Date range filter - check if property is available in the selected date range
+                  if (propertyDateRange.startDate || propertyDateRange.endDate) {
+                    const start = propertyDateRange.startDate ? new Date(propertyDateRange.startDate) : null;
+                    const end = propertyDateRange.endDate ? new Date(propertyDateRange.endDate) : null;
+
+                    // If no dates selected, don't filter
+                    if (!start || !end) {
+                      return true;
+                    }
+
+                    // Validate date range
+                    if (start > end) {
+                      return false; // Invalid date range
+                    }
+
+                    // If property has no reservations, it's available
+                    if (!property.reservationIds || property.reservationIds.length === 0) {
+                      return true; // Available - no reservations
+                    }
+
+                    // Check for overlapping reservations - same logic as backend
+                    const overlappingReservations = property.reservationIds.filter((reservationItem: any) => {
+                      // reservationItem might be an object (if populated) or just an ID string
+                      const reservationId = typeof reservationItem === 'string' ? reservationItem : reservationItem.id || reservationItem._id;
+                      
+                      const reservation = reservations.find((r: any) => r._id === reservationId);
+                      if (!reservation) {
+                        return false;
+                      }
+
+                      // Only check confirmed/pending reservations
+                      if (!['pending', 'confirmed'].includes(reservation.status)) {
+                        return false;
+                      }
+
+                      const reservationStart = new Date(reservation.startDate);
+                      const reservationEnd = new Date(reservation.endDate);
+
+                      // Check if reservation overlaps with filter date range
+                      return reservationStart <= end && reservationEnd >= start;
+                    });
+
+                    // If no overlapping reservations, property is available for these dates
+                    if (overlappingReservations.length > 0) {
+                      return false; // Has overlapping reservations - not available
+                    }
+                  }
+
+                  return true;
+                })
+                .map((property) => {
                 const isReservedByReservation = isPropertyReserved(property._id);
                 const isDisabled = !property.available;
                 return (
