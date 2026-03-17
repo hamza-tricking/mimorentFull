@@ -10,6 +10,7 @@ import NotificationDropdown from '../../../components/admin/NotificationDropdown
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import AdminProfileModal from '../../../components/admin/AdminProfileModal';
 import GoogleMapPreview from '../../../components/GoogleMapPreview';
+import ImageUpload from '../../../components/ImageUpload';
 
 // Debug translation function
 let debugT: (key: string) => string = (key: string) => key;
@@ -68,6 +69,30 @@ ChartJS.register(
   Legend,
   Filler
 );
+
+// Date formatting utility
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  // Use a custom format to avoid locale-specific formatting
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}/${day}/${year}`;
+};
+
+// DateTime formatting utility
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const period = parseInt(hours) >= 12 ? 'PM' : 'AM';
+  const displayHours = parseInt(hours) > 12 ? String(parseInt(hours) - 12).padStart(2, '0') : hours;
+  return `${month}/${day}/${year} ${displayHours}:${minutes}:${seconds} ${period}`;
+};
 
 export default function Dashboard() {
   const { language, t } = useLanguage();
@@ -378,12 +403,6 @@ export default function Dashboard() {
     return `العميل يريد ${action} ${daysCount} ${daysCount === 1 ? 'يوم' : 'أيام'} من الحجز. الفترة السابقة: ${formatDate(oldStartDate)} - ${formatDate(oldEndDate)}. الفترة الجديدة: ${formatDate(newStartDate)} - ${formatDate(newEndDate)}.`;
   };
 
-  // Helper function to format date
-  const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ar-DZ', { year: 'numeric', month: '2-digit', day: '2-digit' });
-  };
-  
   // Reservation state
   const [reservations, setReservations] = useState<any[]>([]);
   const [showAddReservationModal, setShowAddReservationModal] = useState(false);
@@ -480,6 +499,13 @@ export default function Dashboard() {
   const [selectedWilayaForStats, setSelectedWilayaForStats] = useState<string>('');
   const [selectedOfficeForStats, setSelectedOfficeForStats] = useState<string>('');
   const [selectedEmployerForStats, setSelectedEmployerForStats] = useState<string>('');
+
+  // Advanced filters for reservations
+  const [reservationCapacity, setReservationCapacity] = useState<string>('');
+  const [reservationTargetAudience, setReservationTargetAudience] = useState<string>('');
+  const [reservationPriceRange, setReservationPriceRange] = useState({ min: '', max: '' });
+  const [reservationType, setReservationType] = useState<string>('');
+  const [reservationDateRange, setReservationDateRange] = useState({ startDate: '', endDate: '' });
 
   // Debounce state for financial stats
   const [financialTimeoutId, setFinancialTimeoutId] = useState<NodeJS.Timeout | null>(null);
@@ -935,6 +961,38 @@ return true;
     }
   }, [selectedPropertyForReservation, properties]);
 
+  // Calculate total price when preSelectedDates are set or when add reservation modal opens
+  useEffect(() => {
+    if (showAddReservationModal && preSelectedDates && selectedPropertyForReservation) {
+      // Small delay to ensure the DOM is updated with the default values
+      setTimeout(() => {
+        const startDate = preSelectedDates.startDate.toLocaleDateString('en-CA');
+        const endDate = preSelectedDates.endDate.toLocaleDateString('en-CA');
+        
+        // Calculate total price
+        const totalPrice = calculateReservationPrice(startDate, endDate, selectedPropertyForReservation);
+        
+        // Update the total price input
+        const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+        if (totalPriceInput) {
+          totalPriceInput.value = totalPrice.toString();
+        }
+        
+        // Update form state directly without triggering events
+        setAddReservationForm(prev => {
+          const currentPaidAmount = Number(prev.paidAmount || 0);
+          return {
+            ...prev,
+            totalPrice: totalPrice.toString(),
+            remainingAmount: Math.max(0, totalPrice - currentPaidAmount).toString(),
+            paymentStatus: currentPaidAmount === 0 ? 'pending' : 
+                          currentPaidAmount >= totalPrice ? 'paid' : 'partial'
+          };
+        });
+      }, 100);
+    }
+  }, [showAddReservationModal, preSelectedDates, selectedPropertyForReservation]);
+
   // Real-time property status checking for admin dashboard
   useEffect(() => {
     if (!authChecked) return;
@@ -1292,14 +1350,14 @@ setOrders(orders);
               // Pre-fill the reservation form with order data
               const isFamilyProperty = property?.targetAudience === 'family';
               setAddReservationForm({
-                totalPrice: '0',
+                totalPrice: order.totalPrice?.toString() || '0',
                 paidAmount: '0',
                 remainingAmount: '0',
                 paymentStatus: 'pending',
                 status: 'confirmed',
-                isMarried: isFamilyProperty ? true : false,
-                numberOfPeople: isFamilyProperty ? '1' : '1',
-                identityImages: [],
+                isMarried: order.isMarried || (isFamilyProperty ? true : false),
+                numberOfPeople: order.numberOfPeople?.toString() || (isFamilyProperty ? '2' : '1'),
+                identityImages: order.identityImages || [],
                 notes: [],
                 currentNote: ''
               });
@@ -2070,6 +2128,9 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
         )
       );
       
+      console.log('🔍 Admin reservation data being sent:', reservationData);
+      console.log('🔍 Reservation data size:', JSON.stringify(reservationData).length, 'characters');
+      
       const response = await fetch('https://dmtart.pro/mimorent/api/admin/reservations', {
         method: 'POST',
         headers: {
@@ -2079,7 +2140,11 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
         body: JSON.stringify(reservationData)
       });
       
+      console.log('🔍 Admin reservation response status:', response.status);
+      console.log('🔍 Admin reservation response headers:', response.headers);
+      
       const data = await response.json();
+      console.log('🔍 Admin reservation response data:', data);
       
       
       if (data.success) {
@@ -2138,11 +2203,23 @@ return err.msg || JSON.stringify(err);
           errorMessage = `Validation failed:\n${errorDetails}`;
         }
         
+        console.log('🔴 Admin reservation error details:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: data,
+          errorMessage: errorMessage
+        });
+        
         setReservationError(errorMessage);
         addToast(errorMessage || 'فشل في إضافة الحجز', 'error');
       }
     } catch (error) {
-      console.error('Failed to add reservation:', error);
+      console.error('🔴 Failed to add reservation - Network error:', error);
+      console.error('🔴 Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : 'Unknown Error'
+      });
       // Revert optimistic update on error
       await fetchProperties();
       setReservationError('Network error. Please check your connection.');
@@ -2624,6 +2701,13 @@ return err.msg || JSON.stringify(err);
       } finally {
         setLoading(false);
       }
+      fetchOrders();
+    }
+  }, [activeTab]);
+
+  // Fetch orders when orders tab is active
+  useEffect(() => {
+    if (activeTab === 'orders') {
       fetchOrders();
     }
   }, [activeTab]);
@@ -6244,15 +6328,242 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
         )}
       </div>
 
+      {/* Advanced Filters for Reservations */}
+      <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">الفلاتر المتقدمة</h3>
+          <button
+            onClick={() => {
+              setReservationCapacity('');
+              setReservationTargetAudience('');
+              setReservationPriceRange({ min: '', max: '' });
+              setReservationType('');
+              setReservationDateRange({ startDate: '', endDate: '' });
+            }}
+            className="text-sm text-white/80 hover:text-white transition-colors"
+          >
+            مسح الفلاتر
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Capacity Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">السعة القصوى</label>
+            <select
+              value={reservationCapacity}
+              onChange={(e) => setReservationCapacity(e.target.value)}
+              className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">الكل</option>
+              <option value="unspecified">غير محدد</option>
+              <option value="1">1 شخص</option>
+              <option value="2">2 شخص</option>
+              <option value="3">3 أشخاص</option>
+              <option value="4">4 أشخاص</option>
+              <option value="5">5 أشخاص</option>
+              <option value="6">6 أشخاص</option>
+              <option value="8">8 أشخاص</option>
+              <option value="10+">10+ شخص</option>
+            </select>
+          </div>
+
+          {/* Target Audience Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">الجمهور المستهدف</label>
+            <select
+              value={reservationTargetAudience}
+              onChange={(e) => setReservationTargetAudience(e.target.value)}
+              className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">الكل</option>
+              <option value="family">عائلي</option>
+              <option value="normal">عادي</option>
+              <option value="both">كلاهما</option>
+            </select>
+          </div>
+
+          {/* Price Range Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">نطاق السعر</label>
+            <div className="flex flex-col space-y-2">
+              <input
+                type="number"
+                placeholder="الحد الأدنى"
+                value={reservationPriceRange.min}
+                onChange={(e) => setReservationPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+              <input
+                type="number"
+                placeholder="الحد الأعلى"
+                value={reservationPriceRange.max}
+                onChange={(e) => setReservationPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Reservation Type Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">نوع الحجز</label>
+            <select
+              value={reservationType}
+              onChange={(e) => setReservationType(e.target.value)}
+              className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">الكل</option>
+              <option value="daily">يومي</option>
+              <option value="monthly">شهري</option>
+            </select>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">نطاق التاريخ</label>
+            <div className="flex flex-col space-y-2">
+              <input
+                type="date"
+                placeholder="تاريخ البدء"
+                value={reservationDateRange.startDate}
+                onChange={(e) => setReservationDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+              <input
+                type="date"
+                placeholder="تاريخ الانتهاء"
+                value={reservationDateRange.endDate}
+                onChange={(e) => setReservationDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-black placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Properties Grid principal cards off reservation  */}
       <div dir='rtl' className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2  ">
         {properties
           .filter((property: any) => {
-if (!selectedWilaya) return true;
-if (!selectedOffice) return false;
-return property.officeId?._id === selectedOffice || 
-       property.officeId?.id === selectedOffice ||
-       property.officeId?.toString() === selectedOffice;
+            // Wilaya and office filtering (existing logic)
+            if (selectedWilaya) {
+              if (!selectedOffice) {
+                // If wilaya selected but no office, don't show any properties
+                return false;
+              }
+              // Check if property belongs to selected office
+              if (!(property.officeId?._id === selectedOffice || 
+                    property.officeId?.id === selectedOffice ||
+                    property.officeId?.toString() === selectedOffice)) {
+                return false;
+              }
+            }
+
+            // Advanced filtering - only apply when filters are set
+            // Capacity filter
+            if (reservationCapacity) {
+              if (reservationCapacity === 'unspecified') {
+                if (property.capacity !== undefined && property.capacity !== null && property.capacity !== '') {
+                  return false;
+                }
+              } else if (reservationCapacity === '10+') {
+                if (!property.capacity || property.capacity < 10) {
+                  return false;
+                }
+              } else {
+                if (property.capacity !== parseInt(reservationCapacity)) {
+                  return false;
+                }
+              }
+            }
+
+            // Target audience filter
+            if (reservationTargetAudience && property.targetAudience !== reservationTargetAudience) {
+              return false;
+            }
+
+            // Price range filter
+            if (reservationPriceRange.min && (!property.pricePerDay || property.pricePerDay < parseInt(reservationPriceRange.min))) {
+              return false;
+            }
+            if (reservationPriceRange.max && (!property.pricePerDay || property.pricePerDay > parseInt(reservationPriceRange.max))) {
+              return false;
+            }
+
+            // Reservation type filter
+            if (reservationType && property.reserveTheProperty !== reservationType) {
+              return false;
+            }
+
+            // Date range filter - check if property is available in the selected date range (same logic as backend)
+            if (reservationDateRange.startDate || reservationDateRange.endDate) {
+              const start = reservationDateRange.startDate ? new Date(reservationDateRange.startDate) : null;
+              const end = reservationDateRange.endDate ? new Date(reservationDateRange.endDate) : null;
+
+              // If no dates selected, don't filter
+              if (!start || !end) {
+                return true;
+              }
+
+              // Validate date range
+              if (start > end) {
+                return false; // Invalid date range
+              }
+
+              // Debug: Check what reservations we have
+              console.log('All reservations count:', reservations.length);
+              console.log('Property reservationIds:', property.reservationIds);
+
+              // If property has no reservations, it's available
+              if (!property.reservationIds || property.reservationIds.length === 0) {
+                console.log('Property has no reservationIds - showing as available');
+                return true; // Available - no reservations
+              }
+
+              // Check for overlapping reservations - same logic as backend
+              const overlappingReservations = property.reservationIds.filter((reservationItem: any) => {
+                // reservationItem might be an object (if populated) or just an ID string
+                const reservationId = typeof reservationItem === 'string' ? reservationItem : reservationItem.id || reservationItem._id;
+                
+                const reservation = reservations.find((r: any) => r._id === reservationId);
+                if (!reservation) {
+                  console.log('Reservation not found for ID:', reservationId);
+                  return false;
+                }
+
+                // Debug logging
+                console.log('Checking reservation:', reservation);
+                console.log('Filter dates:', start, 'to', end);
+                console.log('Reservation dates:', new Date(reservation.startDate), 'to', new Date(reservation.endDate));
+                console.log('Reservation status:', reservation.status);
+
+                // Only check confirmed/pending reservations
+                if (!['pending', 'confirmed'].includes(reservation.status)) {
+                  console.log('Skipping reservation - status:', reservation.status);
+                  return false;
+                }
+
+                const reservationStart = new Date(reservation.startDate);
+                const reservationEnd = new Date(reservation.endDate);
+
+                // Check if reservation overlaps with filter date range
+                const overlaps = reservationStart <= end && reservationEnd >= start;
+                console.log('Overlaps:', overlaps);
+                return overlaps;
+              });
+
+              console.log('Property:', property.title, 'Overlapping reservations:', overlappingReservations.length);
+
+              // If no overlapping reservations, property is available for these dates
+              if (overlappingReservations.length > 0) {
+                console.log('Hiding property - has overlapping reservations');
+                return false; // Has overlapping reservations - not available
+              } else {
+                console.log('Showing property - no overlapping reservations');
+              }
+            }
+
+            return true;
           })
           .map((property: any) => {
             const isDisabled = !property.available;
@@ -6762,7 +7073,7 @@ openEditReservationModal(reservation);
           totalPrice: totalPrice,
           paidAmount: paidAmount,
           remainingAmount: remainingAmount,
-          paymentStatus: formData.get('paymentStatus') as string,
+          paymentStatus: formData.get('paymentStatus') as string || addReservationForm.paymentStatus,
           employerId: formData.get('employerId') as string || null,
           status: 'pending',
           isMarried: addReservationForm.isMarried,
@@ -7135,51 +7446,12 @@ setAddReservationForm(prev => ({
         <label className="block text-sm font-medium text-gray-700 mb-1">
           {addReservationForm.isMarried ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف'}
         </label>
-        <div className="space-y-2">
-          {addReservationForm.identityImages.map((image, index) => (
-            <div key={index} className="flex items-center space-x-2 space-x-reverse">
-              <input
-                type="text"
-                value={image}
-                onChange={(e) => {
-                  const newImages = [...addReservationForm.identityImages];
-                  newImages[index] = e.target.value;
-                  setAddReservationForm(prev => ({
-                    ...prev,
-                    identityImages: newImages
-                  }));
-                }}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="رابط الصورة"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const newImages = addReservationForm.identityImages.filter((_, i) => i !== index);
-                  setAddReservationForm(prev => ({
-                    ...prev,
-                    identityImages: newImages
-                  }));
-                }}
-                className="px-3 py-2 mx-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
-                حذف
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setAddReservationForm(prev => ({
-                ...prev,
-                identityImages: [...prev.identityImages, '']
-              }));
-            }}
-            className="w-full px-3 py-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-600 transition-colors"
-          >
-            إضافة صورة
-          </button>
-        </div>
+        <ImageUpload
+          images={addReservationForm.identityImages}
+          onImagesChange={(images) => setAddReservationForm(prev => ({ ...prev, identityImages: images }))}
+          error={reservationError}
+          onError={setReservationError}
+        />
       </div>
 
       <div>
@@ -7444,13 +7716,13 @@ setShowContractModal(true);
           totalPrice: totalPrice,
           paidAmount: paidAmount,
           remainingAmount: remainingAmount,
-          paymentStatus: formData.get('paymentStatus') as string,
+          paymentStatus: formData.get('paymentStatus') as string || addReservationForm.paymentStatus,
           employerId: editingReservation?.employerId || null,
           status: formData.get('status') as string,
           isMarried: formData.get('isMarried') === 'true',
           numberOfPeople: formData.get('numberOfPeople') as string,
-          identityImages: editingReservation?.identityImages || [],
-          notes: editingReservation?.notes || []
+          identityImages: addReservationForm.identityImages.filter(img => img.trim() !== ''),
+          notes: addReservationForm.notes
         };
         handleEditReservation(reservationData);
       }}
@@ -7859,45 +8131,12 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
         <label className="block text-sm font-medium text-gray-700 mb-1">
           {editingReservation?.isMarried ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف'}
         </label>
-        <div className="space-y-2">
-          {(editingReservation?.identityImages || []).map((image: string, index: number) => (
-            <div key={index} className="flex items-center space-x-2 space-x-reverse">
-              <input
-                type="text"
-                name={`identityImages_${index}`}
-                defaultValue={image}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="رابط الصورة"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const currentImages = editingReservation?.identityImages || [];
-                  const newImages = currentImages.filter((_: string, i: number) => i !== index);
-                  setEditingReservation((prev: any) => prev ? {
-                    ...prev,
-                    identityImages: newImages
-                  } : null);
-                }}
-                className="px-3 py-2 mx-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
-                حذف
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setEditingReservation((prev: { identityImages: any; }) => prev ? {
-                ...prev,
-                identityImages: [...(prev.identityImages || []), '']
-              } : null);
-            }}
-            className="w-full px-3 py-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-600 transition-colors"
-          >
-            إضافة صورة
-          </button>
-        </div>
+        <ImageUpload
+          images={editingReservation?.identityImages || []}
+          onImagesChange={(images) => setEditingReservation((prev: any) => prev ? { ...prev, identityImages: images } : null)}
+          error={reservationError}
+          onError={setReservationError}
+        />
       </div>
 
       <div>
@@ -8046,12 +8285,9 @@ setShowContractModal(true);
                 {/* Content */}
                 <div className="p-6 overflow-y-auto max-h-[60vh]">
                   {(() => {
-                    const propertyReservations = reservations.filter((r: any) => {
-                      const reservationPropertyId = typeof r.propertyId === 'string' 
-                        ? r.propertyId 
-                        : r.propertyId?._id || r.propertyId.id;
-                      return reservationPropertyId === selectedPropertyForReservationsList;
-                    });
+                    // Find the property and use its reservationIds array (same as calendar)
+                    const property = properties.find((p: any) => p._id === selectedPropertyForReservationsList);
+                    const propertyReservations = property?.reservationIds || [];
 
                     if (propertyReservations.length === 0) {
                       return (
@@ -8191,14 +8427,10 @@ setShowContractModal(true);
   </div>
   <div className="flex items-center gap-2 sm:gap-4 sm:p-6 flex-col sm:flex-row text-center sm:text-right w-full sm:w-auto">
     <div className="text-white/60 text-xs sm:text-sm">
-      {new Date(item.createdAt).toLocaleDateString('ar-DZ', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      })}
+      {formatDate(item.createdAt)}
     </div>
     <div className="text-white/60 text-xs sm:text-sm">
-      {new Date(item.createdAt).toLocaleTimeString('ar-DZ', {
+      {new Date(item.createdAt).toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
@@ -8275,7 +8507,7 @@ setShowContractModal(true);
                   <div className="flex items-center gap-2">
                     <span className="text-white/70">تاريخ البدء:</span>
                     <span className="text-white font-medium">
-                      {new Date(item.metadata.previousReservation.startDate).toLocaleDateString('ar-DZ')}
+                      {formatDate(item.metadata.previousReservation.startDate)}
                     </span>
                   </div>
                 )}
@@ -8283,7 +8515,7 @@ setShowContractModal(true);
                   <div className="flex items-center gap-2">
                     <span className="text-white/70">تاريخ الانتهاء:</span>
                     <span className="text-white font-medium">
-                      {new Date(item.metadata.previousReservation.endDate).toLocaleDateString('ar-DZ')}
+                      {formatDate(item.metadata.previousReservation.endDate)}
                     </span>
                   </div>
                 )}
@@ -8311,7 +8543,7 @@ setShowContractModal(true);
                 <div className="flex items-center gap-2">
                   <span className="text-white/70">تاريخ البدء:</span>
                   <span className="text-white font-medium">
-                    {new Date(item.metadata.startDate).toLocaleDateString('ar-DZ')}
+                    {formatDate(item.metadata.startDate)}
                   </span>
                 </div>
               )}
@@ -8319,7 +8551,7 @@ setShowContractModal(true);
                 <div className="flex items-center gap-2">
                   <span className="text-white/70">تاريخ الانتهاء:</span>
                   <span className="text-white font-medium">
-                    {new Date(item.metadata.endDate).toLocaleDateString('ar-DZ')}
+                    {formatDate(item.metadata.endDate)}
                   </span>
                 </div>
               )}
@@ -8607,6 +8839,52 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
   </div>
 </div>
 
+{/* Customer Information */}
+<div className="bg-gradient-to-br from-pink-500/10 to-rose-500/10 rounded-lg p-3 border border-white/20">
+  <h4 className="text-sm font-medium text-white/80 mb-2">معلومات العميل</h4>
+  <div className="grid grid-cols-1 gap-2 text-sm">
+    <div className="flex justify-between">
+      <span className="text-white/60">الاسم:</span>
+      <span className="text-white font-medium">{order.fullname || 'N/A'}</span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-white/60">الهاتف:</span>
+      <span className="text-white font-medium">{order.phoneNumber || 'N/A'}</span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-white/60">الحالة الاجتماعية:</span>
+      <span className="text-white font-medium">{order.isMarried ? 'متزوج' : 'أعزب'}</span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-white/60">عدد الأشخاص:</span>
+      <span className="text-white font-medium">{order.numberOfPeople || 1}</span>
+    </div>
+    <div className="flex justify-between">
+      <span className="text-white/60">السعر الإجمالي:</span>
+      <span className="text-white font-bold text-green-300">{order.totalPrice ? order.totalPrice.toLocaleString('ar-DZ') + ' دج' : 'N/A'}</span>
+    </div>
+  </div>
+</div>
+
+{/* Identity Images */}
+{order.identityImages && order.identityImages.length > 0 && (
+  <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-lg p-3 border border-white/20">
+    <h4 className="text-sm font-medium text-white/80 mb-2">صور الهوية</h4>
+    <div className="flex flex-wrap gap-2">
+      {order.identityImages.map((image: string, index: number) => (
+        <div key={index} className="relative">
+          <img 
+            src={image} 
+            alt={`Identity ${index + 1}`}
+            className="w-12 h-12 object-cover rounded border border-white/30 cursor-pointer hover:scale-110 transition-transform"
+            onClick={() => window.open(image, '_blank')}
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
 {/* Reservation Dates */}
 <div className="bg-gradient-to-br from-green-500/10 to-teal-500/10 rounded-lg p-3 border border-white/20">
   <h4 className="text-sm font-medium text-white/80 mb-2">تواريخ الحجز</h4>
@@ -8702,7 +8980,7 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
           <div key={index} className="bg-white/5 rounded p-2 border border-white/10">
             <p className="text-white/70 text-sm">{note.message}</p>
             <p className="text-white/50 text-xs mt-1">
-              {note.employerId?.firstName || note.employerId?.username || 'موظف'} - {new Date(note.createdAt).toLocaleDateString('ar-DZ')} {new Date(note.createdAt).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' })}
+              {note.employerId?.firstName || note.employerId?.username || 'موظف'} - {formatDate(note.createdAt)} {new Date(note.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
             </p>
           </div>
         ))}
@@ -9792,14 +10070,47 @@ onClick={(e) => e.stopPropagation()}
           <p className="text-gray-900">{selectedOrder.phoneNumber}</p>
         </div>
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">الحالة الاجتماعية</label>
+          <p className="text-gray-900">{selectedOrder.isMarried ? 'متزوج' : 'أعزب'}</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">عدد الأشخاص</label>
+          <p className="text-gray-900">{selectedOrder.numberOfPeople || 1}</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">السعر الإجمالي</label>
+          <p className="text-gray-900 font-bold text-lg">{selectedOrder.totalPrice ? selectedOrder.totalPrice.toLocaleString('ar-DZ') + ' دج' : 'N/A'}</p>
+        </div>
+        {selectedOrder.identityImages && selectedOrder.identityImages.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">صور الهوية</label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {selectedOrder.identityImages.map((image: string, index: number) => (
+                <div key={index} className="relative">
+                  <img 
+                    src={image} 
+                    alt={`Identity ${index + 1}`}
+                    className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">نوع الطلب</label>
           <p className="text-gray-900">
-{selectedOrder.orderType === 'reserver_property' ? 'عقار محجوز' : 'عقار جديد'}
+            {selectedOrder.orderType === 'reserver_property' ? 'عقار محجوز' : 'عقار جديد'}
           </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
           <p className="text-gray-900">
+            {selectedOrder.status === 'pending' ? 'في الانتظار' :
+             selectedOrder.status === 'processing' ? 'قيد المعالجة' :
+             selectedOrder.status === 'approved' ? 'موافق عليه' :
+             selectedOrder.status === 'rejected' ? 'مرفوض' :
+             selectedOrder.status}
 {selectedOrder.status === 'pending' ? 'في الانتظار' :
  selectedOrder.status === 'processing' ? 'قيد المعالجة' :
  selectedOrder.status === 'approved' ? 'موافق عليه' :

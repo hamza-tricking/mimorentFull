@@ -7,6 +7,7 @@ import { useToast } from '../../contexts/ToastContext';
 import NotificationDropdown from '../../components/employer/NotificationDropdown';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import EmployeeProfileModal from '../../components/employer/EmployeeProfileModal';
+import ImageUpload from '../../components/ImageUpload';
 
 interface Property {
   _id: string;
@@ -20,6 +21,7 @@ interface Property {
   propertyType?: string;
   reserveTheProperty?: string;
   targetAudience?: string;
+  reservationIds?: any[];
   wilayaId: {
     _id: string;
     name: string;
@@ -168,7 +170,7 @@ export default function EmployerDashboard() {
     status: 'pending' as 'pending' | 'confirmed' | 'cancelled' | 'completed',
     isMarried: false,
     numberOfPeople: '1',
-    identityImages: [''],
+    identityImages: [] as string[],
     notes: [] as string[],
     currentNote: ''
   });
@@ -675,26 +677,47 @@ export default function EmployerDashboard() {
 
   const fetchOrders = async () => {
     try {
+      console.log('🔍 Employer fetching orders...');
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        console.error('🔴 No token found in localStorage');
+        setOrders([]);
+        return;
+      }
+      
+      console.log('🔍 Making request to: https://dmtart.pro/mimorent/api/admin/orders-reservation/employer');
       
       const response = await fetch('https://dmtart.pro/mimorent/api/admin/orders-reservation/employer', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-
+      
+      console.log('🔍 Employer orders response status:', response.status);
+      console.log('🔍 Employer orders response headers:', response.headers);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('🔍 Employer orders response data:', data);
         
         // Ensure we always set an array - data is nested: data.data.data
         const ordersArray = Array.isArray(data?.data?.data) ? data.data.data : [];
+        console.log('🔍 Employer orders array length:', ordersArray.length);
         setOrders(ordersArray);
       } else {
-        console.error('Failed to fetch orders:', response.statusText);
+        console.error('🔴 Failed to fetch orders:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('🔴 Error response body:', errorText);
         setOrders([]); // Set empty array on error
       }
     } catch (error) {
-      console.error('Failed to fetch orders:', error);
+      console.error('🔴 Failed to fetch orders - Network error:', error);
+      console.error('🔴 Error details:', {
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+        name: (error as Error).name
+      });
       setOrders([]); // Set empty array on error
     }
   };
@@ -886,9 +909,9 @@ export default function EmployerDashboard() {
         remainingAmount: (order.totalPrice || property.pricePerDay || 0) - (order.advancePayment || 0),
         paymentStatus: 'pending' as 'pending' | 'partial' | 'paid',
         status: 'confirmed' as 'pending' | 'confirmed' | 'cancelled' | 'completed', // Set to confirmed since this is from an approved order
-        isMarried: false,
-        numberOfPeople: '1',
-        identityImages: [''],
+        isMarried: order.isMarried || false,
+        numberOfPeople: order.numberOfPeople?.toString() || '1',
+        identityImages: order.identityImages || [''],
         notes: [],
         currentNote: ''
       });
@@ -1006,7 +1029,7 @@ export default function EmployerDashboard() {
       status: 'pending',
       isMarried: isFamilyProperty,
       numberOfPeople: '1',
-      identityImages: [''],
+      identityImages: [],
       notes: [],
       currentNote: ''
     });
@@ -1202,19 +1225,24 @@ export default function EmployerDashboard() {
           // Check if this is a family property and auto-set marital status
           const isFamilyProperty = property?.targetAudience === 'family';
           
+          // Calculate the total price based on selected dates and property
+          const startDate = start.toISOString().split('T')[0];
+          const endDate = end.toISOString().split('T')[0];
+          const calculatedPrice = calculateReservationPrice(startDate, endDate, propertyId);
+          
           setFormData({
             customerName: '',
             customerPhone: '',
-            startDate: start.toISOString().split('T')[0],
-            endDate: end.toISOString().split('T')[0],
-            totalPrice: 0,
+            startDate: startDate,
+            endDate: endDate,
+            totalPrice: calculatedPrice,
             paidAmount: 0,
-            remainingAmount: 0,
+            remainingAmount: calculatedPrice,
             paymentStatus: 'pending',
             status: 'pending',
             isMarried: isFamilyProperty,
             numberOfPeople: '1',
-            identityImages: [''],
+            identityImages: [],
             notes: [],
             currentNote: ''
           });
@@ -1258,12 +1286,7 @@ export default function EmployerDashboard() {
     
     // Get the property and its reservations
     const property = properties.find((p: any) => p._id === propertyId);
-    const propertyReservations = reservations.filter((r: any) => {
-      const reservationPropertyId = typeof r.propertyId === 'string' 
-        ? r.propertyId 
-        : r.propertyId?._id || r.propertyId.id;
-      return reservationPropertyId === propertyId;
-    });
+    const propertyReservations = property?.reservationIds || [];
     
     // Color palette for different reservations
     const reservationColors = [
@@ -1452,7 +1475,7 @@ export default function EmployerDashboard() {
       status: 'pending',
       isMarried: isFamilyProperty || false,
       numberOfPeople: '1',
-      identityImages: [''],
+      identityImages: [],
       notes: [],
       currentNote: ''
     });
@@ -2297,6 +2320,52 @@ export default function EmployerDashboard() {
                                 </div>
                               )}
 
+                              {/* New Order Fields */}
+                              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg p-3 border border-white/20">
+                                <h4 className="text-sm font-medium text-white/80 mb-2">معلومات إضافية</h4>
+                                <div className="grid grid-cols-1 gap-2 text-sm">
+                                  <div className="flex justify-between">
+                                    <span className="text-white/60">الحالة الاجتماعية:</span>
+                                    <span className="text-white font-medium">
+                                      {order.isMarried ? 'متزوج' : 'أعزب'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-white/60">عدد الأشخاص:</span>
+                                    <span className="text-white font-medium">{order.numberOfPeople || '1'}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-white/60">السعر الإجمالي:</span>
+                                    <span className="text-white font-medium">{order.totalPrice || '0'} دج</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Identity Images */}
+                              {order.identityImages && order.identityImages.length > 0 && (
+                                <div className="bg-gradient-to-br from-indigo-500/10 to-blue-500/10 rounded-lg p-3 border border-white/20">
+                                  <h4 className="text-sm font-medium text-white/80 mb-2">صور الهوية</h4>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {order.identityImages.map((image: string, index: number) => (
+                                      <div key={index} className="relative group">
+                                        <img
+                                          src={image}
+                                          alt={`Identity ${index + 1}`}
+                                          className="w-full h-16 object-cover rounded border border-white/20 cursor-pointer hover:scale-105 transition-transform"
+                                          onClick={() => {
+                                            // Open image in new tab
+                                            window.open(image, '_blank');
+                                          }}
+                                        />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center">
+                                          <span className="text-white text-xs">فتح</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Admin Notes - Read Only */}
                               {order.adminNotes && (
                                 <div className="bg-white/10 rounded-lg p-3 border border-white/20">
@@ -2612,6 +2681,9 @@ export default function EmployerDashboard() {
                       const endDate = e.target.value;
                       const startDate = formData.startDate;
                       
+                      // Always update the endDate in state so UI reflects user input
+                      setFormData(prev => ({ ...prev, endDate }));
+                      
                       if (startDate && endDate) {
                         const validation = validateMonthlyReservation(new Date(startDate), new Date(endDate), selectedProperty._id);
                         if (!validation.isValid) {
@@ -2622,7 +2694,6 @@ export default function EmployerDashboard() {
                           const calculatedPrice = calculateReservationPrice(startDate, endDate, selectedProperty._id);
                           setFormData(prev => ({
                             ...prev,
-                            endDate,
                             totalPrice: calculatedPrice,
                             remainingAmount: Math.max(0, calculatedPrice - prev.paidAmount)
                           }));
@@ -2638,8 +2709,6 @@ export default function EmployerDashboard() {
                             setDateChangeSuggestion(suggestion);
                           }
                         }
-                      } else {
-                        setFormData(prev => ({ ...prev, endDate }));
                       }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2885,51 +2954,12 @@ export default function EmployerDashboard() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {formData.isMarried ? 'يرجى رفع صور الدفتر العائلي' : 'يرجى رفع صور بطاقة التعريف'}
                 </label>
-                <div className="space-y-2">
-                  {formData.identityImages.map((image, index) => (
-                    <div key={index} className="flex items-center space-x-2 space-x-reverse">
-                      <input
-                        type="text"
-                        value={image}
-                        onChange={(e) => {
-                          const newImages = [...formData.identityImages];
-                          newImages[index] = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            identityImages: newImages
-                          }));
-                        }}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="رابط الصورة"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newImages = formData.identityImages.filter((_, i) => i !== index);
-                          setFormData(prev => ({
-                            ...prev,
-                            identityImages: newImages
-                          }));
-                        }}
-                        className="px-3 py-2 mx-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                      >
-                        حذف
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFormData(prev => ({
-                        ...prev,
-                        identityImages: [...prev.identityImages, '']
-                      }));
-                    }}
-                    className="w-full px-3 py-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-600 transition-colors"
-                  >
-                    إضافة صورة
-                  </button>
-                </div>
+                <ImageUpload
+                  images={formData.identityImages}
+                  onImagesChange={(images) => setFormData(prev => ({ ...prev, identityImages: images }))}
+                  error={error}
+                  onError={setError}
+                />
               </div>
 
               <div>
@@ -3041,6 +3071,16 @@ export default function EmployerDashboard() {
                   )}
                 </button>
               </div>
+              
+              {/* Duplicate Error Display Before Submit */}
+              {reservationError && (
+                <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                  <p className="text-sm font-medium mb-1">خطأ:</p>
+                  <pre className="text-xs whitespace-pre-line font-mono">
+                    {reservationError}
+                  </pre>
+                </div>
+              )}
             </form>
             </div>
           </div>
@@ -3381,12 +3421,9 @@ export default function EmployerDashboard() {
             {/* Content */}
             <div className="p-6 overflow-y-auto max-h-[60vh]">
               {(() => {
-                const propertyReservations = reservations.filter((r: any) => {
-                  const reservationPropertyId = typeof r.propertyId === 'string' 
-                    ? r.propertyId 
-                    : r.propertyId?._id || r.propertyId.id;
-                  return reservationPropertyId === selectedPropertyForReservationsList;
-                });
+                // Find the property and use its reservationIds array (same as calendar)
+                const property = properties.find((p: any) => p._id === selectedPropertyForReservationsList);
+                const propertyReservations = property?.reservationIds || [];
 
                 if (propertyReservations.length === 0) {
                   return (

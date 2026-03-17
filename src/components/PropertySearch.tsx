@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, MapPin, Home, Calendar, Phone, Filter, X, MessageCircle, DollarSign } from 'lucide-react';
+import { Search, MapPin, Home, Calendar, Phone, Filter, X, MessageCircle, DollarSign, Users, Users2, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import PropertyPreviewModal from './PropertyPreviewModal';
 import ReservationModal from './ReservationModal';
+import ContactModal from './ContactModal';
+import AdminCalendar from './AdminCalendar';
 import { useToast } from '../contexts/ToastContext';
 
 interface Property {
@@ -50,40 +52,37 @@ const PropertySearch = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWilaya, setSelectedWilaya] = useState('');
   const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
-  const [showContactModal, setShowContactModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [showReservationModal, setShowReservationModal] = useState(false);
+  const [showDateCalendar, setShowDateCalendar] = useState(false);
   const [showPhotoPreview, setShowPhotoPreview] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [contactForm, setContactForm] = useState({
-    name: '',
-    phone: '',
-    message: '',
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  });
   const [currentImageIndex, setCurrentImageIndex] = useState<{[key: string]: number}>({});
   const [photoPreviewIndex, setPhotoPreviewIndex] = useState(0);
+  
+  // Advanced filter states
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [targetAudience, setTargetAudience] = useState<string>('');
+  const [capacity, setCapacity] = useState<string>('');
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
+  const [reserveType, setReserveType] = useState<string>('');
+  const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
 
   // Fetch properties and wilayas
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch properties
-        const propertiesResponse = await fetch('https://dmtart.pro/mimorent/api/properties');
-        const propertiesData = await propertiesResponse.json();
-        
-        // Fetch wilayas
+        // Fetch wilayas first
         const wilayasResponse = await fetch('https://dmtart.pro/mimorent/api/wilayas');
         const wilayasData = await wilayasResponse.json();
-        
-        if (propertiesData.success) {
-          setProperties(propertiesData.data.properties || []);
-        }
         
         if (wilayasData.success) {
           setWilayas(wilayasData.data.wilayas || []);
         }
+        
+        // Fetch properties will be done based on filters
+        await fetchProperties();
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -94,85 +93,107 @@ const PropertySearch = () => {
     fetchData();
   }, []);
 
-  // Filter properties based on search and wilaya
+  // Fetch properties based on filters
+  const fetchProperties = async () => {
+    try {
+      // Build query parameters
+      const params = new URLSearchParams();
+      
+      if (searchTerm) params.append('search', searchTerm);
+      if (selectedWilaya) params.append('wilayaId', selectedWilaya);
+      if (targetAudience) params.append('targetAudience', targetAudience);
+      if (capacity) params.append('capacity', capacity);
+      if (priceRange.min) params.append('minPrice', priceRange.min);
+      if (priceRange.max) params.append('maxPrice', priceRange.max);
+      if (reserveType) params.append('reserveType', reserveType);
+      if (dateRange.startDate) params.append('startDate', dateRange.startDate);
+      if (dateRange.endDate) params.append('endDate', dateRange.endDate);
+      
+      const url = `https://dmtart.pro/mimorent/api/properties?${params.toString()}`;
+      console.log('Fetching from public properties endpoint:', url);
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('API Response:', data);
+      
+      if (data.success) {
+        setProperties(data.data.properties || []);
+      } else {
+        console.error('API Error:', data);
+        setProperties([]);
+      }
+    } catch (error) {
+      console.error('Error fetching properties:', error);
+      setProperties([]);
+    }
+  };
+
+  // Refetch properties when filters change
   useEffect(() => {
-    console.log('Filtering properties. Total received:', properties.length);
-    console.log('Properties details:', properties.map(p => ({
-      title: p.title,
-      available: p.available,
-      isReserved: p.isReserved
-    })));
-
-    let filtered = properties;
-
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(property =>
-        property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        property.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        property.wilayaId.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      console.log('After search filter:', filtered.length);
+    if (!loading) {
+      fetchProperties();
     }
+  }, [searchTerm, selectedWilaya, targetAudience, capacity, priceRange, reserveType, dateRange]);
 
-    // Filter by wilaya
-    if (selectedWilaya) {
-      filtered = filtered.filter(property =>
-        property.wilayaId._id === selectedWilaya
-      );
-      console.log('After wilaya filter:', filtered.length);
+  // Function to calculate end date for monthly reservations (same as admin dashboard)
+  const calculateMonthlyEndDate = (startDate: string, months: number = 1): string => {
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+    
+    // Handle edge cases for end of month (e.g., Jan 31 → Feb 28/29)
+    if (start.getDate() !== end.getDate()) {
+      end.setDate(0); // Set to last day of previous month
     }
+    
+    return end.toISOString().split('T')[0];
+  };
 
-    // Show all available properties (both reserved and not reserved)
-    filtered = filtered.filter(property => property.available);
+  // Handle date changes for monthly reservations
+  const handleStartDateChange = (date: string) => {
+    const newDateRange = { ...dateRange, startDate: date };
+    
+    // If monthly reservation, auto-calculate end date (same as admin dashboard)
+    if (reserveType === 'monthly') {
+      newDateRange.endDate = calculateMonthlyEndDate(date, 1);
+    }
+    
+    setDateRange(newDateRange);
+  };
 
-    setFilteredProperties(filtered);
-  }, [properties, searchTerm, selectedWilaya]);
+  const handleEndDateChange = (date: string) => {
+    // For monthly reservations, validate that the day matches start date
+    if (reserveType === 'monthly' && dateRange.startDate) {
+      const start = new Date(dateRange.startDate);
+      const end = new Date(date);
+      
+      // Check if days match
+      if (start.getDate() !== end.getDate()) {
+        // Don't allow the change - keep the same day as start date
+        const correctedEndDate = new Date(start);
+        correctedEndDate.setFullYear(end.getFullYear(), end.getMonth(), start.getDate());
+        setDateRange(prev => ({ ...prev, endDate: correctedEndDate.toISOString().split('T')[0] }));
+        return;
+      }
+    }
+    
+    setDateRange(prev => ({ ...prev, endDate: date }));
+  };
+
+  // Properties are now filtered on the backend, so we just set them directly
+  useEffect(() => {
+    setFilteredProperties(properties);
+  }, [properties]);
 
   const openContactModal = (property: Property) => {
     setSelectedProperty(property);
-    
-    // Calculate default dates based on property reservation
-    let defaultStartDate = new Date();
-    let defaultEndDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    
-    if (property.reservationEndDate) {
-      const reservationEnd = new Date(property.reservationEndDate);
-      console.log('🔍 Reservation end date:', reservationEnd);
-      
-      // Add 1 day to reservation end date
-      defaultStartDate = new Date(reservationEnd);
-      defaultStartDate.setDate(reservationEnd.getDate() + 1);
-      
-      // Add 7 days to start date
-      defaultEndDate = new Date(defaultStartDate);
-      defaultEndDate.setDate(defaultStartDate.getDate() + 7);
-      
-      console.log('🔍 Calculated start date:', defaultStartDate);
-      console.log('🔍 Calculated end date:', defaultEndDate);
-    }
-    
-    setContactForm({
-      name: '',
-      phone: '',
-      message: '',
-      startDate: defaultStartDate.toISOString().split('T')[0],
-      endDate: defaultEndDate.toISOString().split('T')[0]
-    });
-    
     setShowContactModal(true);
   };
 
   const closeContactModal = () => {
     setShowContactModal(false);
     setSelectedProperty(null);
-    setContactForm({ 
-      name: '', 
-      phone: '', 
-      message: '',
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    });
   };
 
   const openPreviewModal = (property: Property) => {
@@ -218,53 +239,6 @@ const PropertySearch = () => {
       setPhotoPreviewIndex((prev) => 
         prev === 0 ? selectedProperty.images.length - 1 : prev - 1
       );
-    }
-  };
-
-  const handleContactSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedProperty) return;
-
-    try {
-      const orderData = {
-        fullname: contactForm.name,
-        phoneNumber: contactForm.phone,
-        propertyId: selectedProperty._id,
-        wilayaId: selectedProperty.wilayaId._id,
-        startDate: contactForm.startDate,
-        endDate: contactForm.endDate,
-        orderType: selectedProperty.isReserved ? 'reserver_property' : 'notreserver_property',
-        priority: 'medium',
-        notes: `طلب حجز للعقار: ${selectedProperty.title} - ${selectedProperty.isReserved ? 'عقار محجوز حالياً' : 'عقار متاح'} - ${contactForm.message}`
-      };
-
-      const response = await fetch('https://dmtart.pro/mimorent/api/orders-reservation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        addToast('تم إرسال طلب الحجز بنجاح! سيتواصل معك المكتب لتأكيد الحجز.', 'success');
-        closeContactModal();
-      } else {
-        // Handle validation errors specifically
-        if (result.errors && Array.isArray(result.errors)) {
-          const validationError = result.errors[0];
-          const errorMessage = validationError.msg || validationError.message || 'فشل إرسال طلب الحجز';
-          addToast(errorMessage, 'error');
-        } else {
-          addToast(result.message || 'فشل إرسال طلب الحجز', 'error');
-        }
-      }
-    } catch (error) {
-      console.error('Error submitting order:', error);
-      addToast('حدث خطأ في الاتصال بالخادم', 'error');
     }
   };
 
@@ -361,6 +335,376 @@ const PropertySearch = () => {
                 </div>
               </div>
 
+              {/* Advanced Filters Toggle with Active Tags */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <button
+                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                    className="group relative px-4 py-2 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-full border border-[#24697f]/30 backdrop-blur-sm hover:from-[#24697f]/20 hover:to-teal-500/20 transition-all duration-300 flex items-center space-x-2 space-x-reverse"
+                  >
+                    <Filter className="w-4 h-4 text-[#24697f]" />
+                    <span className="text-[#24697f] font-medium text-sm">
+                      {showAdvancedFilters ? 'إخفاء الفلاتر المتقدمة' : 'عرض الفلاتر المتقدمة'}
+                    </span>
+                    <svg
+                      className={`w-4 h-4 text-[#24697f] transition-transform duration-300 ${showAdvancedFilters ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Active Filter Tags */}
+                  <div className="flex items-center flex-wrap gap-2">
+                    {/* Search Tag */}
+                    {searchTerm && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-blue-500/15 to-blue-600/15 rounded-full border border-blue-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse">
+                        <Search className="w-3 h-3 text-blue-600" />
+                        <span className="text-blue-700 text-xs font-medium">{searchTerm}</span>
+                        <button
+                          onClick={() => setSearchTerm('')}
+                          className="w-4 h-4 bg-blue-500/20 rounded-full flex items-center justify-center hover:bg-blue-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-blue-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Wilaya Tag */}
+                    {selectedWilaya && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-green-500/15 to-green-600/15 rounded-full border border-green-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse">
+                        <MapPin className="w-3 h-3 text-green-600" />
+                        <span className="text-green-700 text-xs font-medium">
+                          {wilayas.find(w => w._id === selectedWilaya)?.name}
+                        </span>
+                        <button
+                          onClick={() => setSelectedWilaya('')}
+                          className="w-4 h-4 bg-green-500/20 rounded-full flex items-center justify-center hover:bg-green-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-green-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Reservation Status Tag - REMOVED */}
+
+                    {/* Target Audience Tag */}
+                    {targetAudience && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-blue-500/15 to-indigo-600/15 rounded-full border border-blue-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse">
+                        <Users className="w-3 h-3 text-blue-600" />
+                        <span className="text-blue-700 text-xs font-medium">
+                          {targetAudience === 'family' ? 'عائلي' : targetAudience === 'normal' ? 'فردي' : 'للكل'}
+                        </span>
+                        <button
+                          onClick={() => setTargetAudience('')}
+                          className="w-4 h-4 bg-blue-500/20 rounded-full flex items-center justify-center hover:bg-blue-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-blue-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Capacity Tag */}
+                    {capacity && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-orange-500/15 to-orange-600/15 rounded-full border border-orange-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse">
+                        <Users2 className="w-3 h-3 text-orange-600" />
+                        <span className="text-orange-700 text-xs font-medium">
+                          {capacity === 'unspecified' ? 'غير محدد' : 
+                           capacity === '10+' ? '10+ شخص' : `${capacity} شخص`}
+                        </span>
+                        <button
+                          onClick={() => setCapacity('')}
+                          className="w-4 h-4 bg-orange-500/20 rounded-full flex items-center justify-center hover:bg-orange-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-orange-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Price Range Tag */}
+                    {(priceRange.min || priceRange.max) && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-green-500/15 to-teal-600/15 rounded-full border border-green-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse">
+                        <DollarSign className="w-3 h-3 text-green-600" />
+                        <span className="text-green-700 text-xs font-medium">
+                          {priceRange.min && `من: ${priceRange.min}`}
+                          {priceRange.min && priceRange.max && ' - '}
+                          {priceRange.max && `إلى: ${priceRange.max}`}
+                          {priceRange.min && !priceRange.max && ' دج+'}
+                          {priceRange.max && !priceRange.min && `حتى: ${priceRange.max} دج`}
+                        </span>
+                        <button
+                          onClick={() => setPriceRange({ min: '', max: '' })}
+                          className="w-4 h-4 bg-green-500/20 rounded-full flex items-center justify-center hover:bg-green-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-green-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Reserve Type Tag */}
+                    {reserveType && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-indigo-500/15 to-indigo-600/15 rounded-full border border-indigo-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse">
+                        <Clock className="w-3 h-3 text-indigo-600" />
+                        <span className="text-indigo-700 text-xs font-medium">
+                          {reserveType === 'daily' ? 'حجز يومي' : 'حجز شهري'}
+                        </span>
+                        <button
+                          onClick={() => setReserveType('')}
+                          className="w-4 h-4 bg-indigo-500/20 rounded-full flex items-center justify-center hover:bg-indigo-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-indigo-600" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Date Range Tag */}
+                    {(dateRange.startDate || dateRange.endDate) && (
+                      <div className="group relative px-3 py-1.5 bg-gradient-to-r from-pink-500/15 to-rose-600/15 rounded-full border border-pink-200/50 backdrop-blur-sm flex items-center space-x-2 space-x-reverse w-full justify-between">
+                        <Calendar className="w-3 h-3 text-pink-600" />
+                        <span className="text-pink-700 text-xs font-medium">
+                          {dateRange.startDate && (() => {
+                            const date = new Date(dateRange.startDate);
+                            return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+                          })()}
+                          {dateRange.startDate && dateRange.endDate && ' - '}
+                          {dateRange.endDate && (() => {
+                            const date = new Date(dateRange.endDate);
+                            return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
+                          })()}
+                          {dateRange.startDate && !dateRange.endDate && ' فصاعدا'}
+                          {!dateRange.startDate && dateRange.endDate && ' وحتى'}
+                        </span>
+                        <button
+                          onClick={() => setDateRange({ startDate: '', endDate: '' })}
+                          className="w-4 h-4 bg-pink-500/20 rounded-full flex items-center justify-center hover:bg-pink-500/30 transition-colors"
+                        >
+                          <X className="w-2.5 h-2.5 text-pink-600" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Advanced Filters */}
+              {showAdvancedFilters && (
+                <div className="mt-6 p-6 bg-gradient-to-br from-white/70 via-white/60 to-white/50 backdrop-blur-md rounded-3xl border border-gray-200/60 shadow-2xl">
+                  <div className="mb-6">
+                    <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center">
+                      <Filter className="w-5 h-5 mr-2 text-[#24697f]" />
+                      فلاتر البحث المتقدمة
+                    </h3>
+                    <p className="text-sm text-gray-600">استخدم الفلاتر التالية للعثور على العقار المثالي لك</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* Target Audience */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Users className="w-4 h-4 mr-2 text-blue-500" />
+                        الجمهور المستهدف
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                        <select
+                          value={targetAudience}
+                          onChange={(e) => setTargetAudience(e.target.value)}
+                          className="relative w-full pl-10 pr-8 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm"
+                        >
+                          <option value="">الكل</option>
+                          <option value="family">عائلي</option>
+                          <option value="normal">فردي</option>
+                          <option value="both">للكل</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Capacity */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Users2 className="w-4 h-4 mr-2 text-orange-500" />
+                        السعة بالضبط
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Users2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                        <select
+                          value={capacity}
+                          onChange={(e) => setCapacity(e.target.value)}
+                          className="relative w-full pl-10 pr-8 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm"
+                        >
+                          <option value="">الكل</option>
+                          <option value="unspecified">غير محدد</option>
+                          <option value="1">1 شخص</option>
+                          <option value="2">2 شخص</option>
+                          <option value="3">3 شخص</option>
+                          <option value="4">4 شخص</option>
+                          <option value="5">5 شخص</option>
+                          <option value="6">6 شخص</option>
+                          <option value="8">8 شخص</option>
+                          <option value="10+">10+ شخص</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Price Range */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700 flex items-center">
+                          <DollarSign className="w-4 h-4 mr-2 text-green-500" />
+                          السعر الأدنى
+                        </label>
+                        <div className="relative group">
+                          <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                          <input
+                            type="number"
+                            value={priceRange.min}
+                            onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                            className="relative w-full pl-10 pr-3 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-700 flex items-center">
+                          <DollarSign className="w-4 h-4 mr-2 text-emerald-500" />
+                          السعر الأعلى
+                        </label>
+                        <div className="relative group">
+                          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-green-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                          <input
+                            type="number"
+                            value={priceRange.max}
+                            onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                            className="relative w-full pl-10 pr-3 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
+                            placeholder="10000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Reservation Type */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Clock className="w-4 h-4 mr-2 text-indigo-500" />
+                        نوع الحجز
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-blue-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                        <select
+                          value={reserveType}
+                          onChange={(e) => setReserveType(e.target.value)}
+                          className="relative w-full pl-10 pr-8 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm"
+                        >
+                          <option value="">الكل</option>
+                          <option value="daily">يومي</option>
+                          <option value="monthly">شهري</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                                      </div>
+                </div>
+              )}
+
+              {/* Separate Reservation Date Section */}
+              <div className="bg-gradient-to-br mt-4 from-indigo-50/80 via-purple-50/80 to-pink-50/80 backdrop-blur-sm rounded-2xl border border-indigo-200/50 shadow-lg">
+                <div className="p-6 ">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                      <Calendar className="w-5 h-5 mr-2 text-indigo-600" />
+                      تواريخ الحجز
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Start Date */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-pink-500" />
+                        تاريخ البدء
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-rose-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                        <input
+                          type="date"
+                          value={dateRange.startDate}
+                          onChange={(e) => handleStartDateChange(e.target.value)}
+                          className="relative w-full pl-10 pr-3 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* End Date */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-700 flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-rose-500" />
+                        تاريخ الانتهاء
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-rose-500/10 to-pink-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#24697f] z-10" />
+                        <input
+                          type="date"
+                          value={dateRange.endDate}
+                          onChange={(e) => handleEndDateChange(e.target.value)}
+                          min={dateRange.startDate}
+                          className="relative w-full pl-10 pr-3 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Monthly reservation note */}
+                  {reserveType === 'monthly' && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-amber-800">
+                          <p className="font-medium">ملاحظة للحجز الشهري:</p>
+                          <p>يتم حساب تاريخ الانتهاء تلقائياً عند تغيير تاريخ البدء.</p>
+                          <p className="text-xs mt-1">يمكنك تغيير الشهر والسنة فقط، اليوم يبقى كما في تاريخ البدء.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Admin Calendar - Show Directly */}
+                  <div className="mt-6">
+                    <AdminCalendar
+                      startDate={dateRange.startDate}
+                      endDate={dateRange.endDate}
+                      onStartDateChange={handleStartDateChange}
+                      onEndDateChange={handleEndDateChange}
+                      reserveType={reserveType as 'daily' | 'monthly'}
+                      onClose={() => {}} // No close needed since it's always visible
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Results Count and Clear Filter */}
               <div className="mt-6 flex items-center justify-between w-full">
                 <div className="flex items-center space-x-4 space-x-reverse flex-1">
@@ -400,20 +744,25 @@ const PropertySearch = () => {
                   </div>
                 </div>
                 
-                {(searchTerm || selectedWilaya) && (
-                  <button
-                    onClick={() => {
-                      setSearchTerm('');
-                      setSelectedWilaya('');
-                    }}
-                    className="group relative px-6 py-3 bg-gradient-to-r from-pink-500/10 to-pink-600/10 rounded-full border border-pink-200/50 backdrop-blur-sm hover:from-pink-500/20 hover:to-pink-600/20 transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md min-w-fit"
-                  >
-                    <span className="text-pink-600 text-sm font-medium group-hover:text-pink-700 transition-colors duration-300 flex items-center">
-                      <X className="w-4 h-4 ml-2" />
-                      مسح التصفية
-                    </span>
-                  </button>
-                )}
+                  {(searchTerm || selectedWilaya || targetAudience || capacity || priceRange.min || priceRange.max || reserveType || dateRange.startDate || dateRange.endDate) && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm('');
+                        setSelectedWilaya('');
+                        setTargetAudience('');
+                        setCapacity('');
+                        setPriceRange({ min: '', max: '' });
+                        setReserveType('');
+                        setDateRange({ startDate: '', endDate: '' });
+                      }}
+                      className="group relative px-6 py-3 bg-gradient-to-r from-pink-500/10 to-pink-600/10 rounded-full border border-pink-200/50 backdrop-blur-sm hover:from-pink-500/20 hover:to-pink-600/20 transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md min-w-fit"
+                    >
+                      <span className="text-pink-600 text-sm font-medium group-hover:text-pink-700 transition-colors duration-300 flex items-center">
+                        <X className="w-4 h-4 ml-2" />
+                        مسح التصفية
+                      </span>
+                    </button>
+                  )}
               </div>
             </div>
           </div>
@@ -432,6 +781,11 @@ const PropertySearch = () => {
                 onClick={() => {
                   setSearchTerm('');
                   setSelectedWilaya('');
+                  setTargetAudience('');
+                  setCapacity('');
+                  setPriceRange({ min: '', max: '' });
+                  setReserveType('');
+                  setDateRange({ startDate: '', endDate: '' });
                 }}
                 className="px-4 py-2 bg-[#24697f] text-white rounded-lg hover:bg-[#1a5366] transition-all duration-300 transform hover:scale-105 shadow-lg"
               >
@@ -537,6 +891,38 @@ const PropertySearch = () => {
                     </div>
                   </div>
                   
+                  {/* Property Tags */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {/* Target Audience Tag */}
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+                      (property as any).targetAudience === 'family' 
+                        ? 'bg-purple-100 text-purple-700 border-purple-200' 
+                        : (property as any).targetAudience === 'normal'
+                        ? 'bg-blue-100 text-blue-700 border-blue-200'
+                        : 'bg-green-100 text-green-700 border-green-200'
+                    }`}>
+                      <Users className="w-3 h-3 mr-1" />
+                      {(property as any).targetAudience === 'family' ? 'عائلي' : 
+                       (property as any).targetAudience === 'normal' ? 'فردي' : 'للكل'}
+                    </span>
+                    
+                    {/* Capacity Tag */}
+                    <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-700 border-orange-200 rounded-full text-xs font-medium">
+                      <Users className="w-3 h-3 mr-1" />
+                      السعة: {(property as any).capacity || 'غير محدد'}
+                    </span>
+                    
+                    {/* Reservation Type Tag */}
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
+                      (property as any).reserveTheProperty === 'daily'
+                        ? 'bg-teal-100 text-teal-700 border-teal-200'
+                        : 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                    }`}>
+                      <Calendar className="w-3 h-3 mr-1" />
+                      {(property as any).reserveTheProperty === 'daily' ? 'يومي' : 'شهري'}
+                    </span>
+                  </div>
+                  
                   <p className="text-gray-600 text-xs mb-3 line-clamp-2 leading-relaxed">{property.description}</p>
                   
                   <div className="flex items-center justify-between mb-3">
@@ -607,163 +993,11 @@ const PropertySearch = () => {
       </div>
 
       {/* Contact Modal */}
-      {showContactModal && selectedProperty && (
-        <div className="fixed inset-0 bg-white/40 backdrop-blur-xl flex items-center justify-center z-70 p-4 modal-backdrop">
-          <div className="bg-white/95 backdrop-blur-2xl rounded-3xl w-full max-w-md max-h-[95vh] overflow-hidden flex flex-col shadow-3xl border border-white/70 transition-all duration-300 ease-out relative">
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-[#24697f] via-teal-500 to-pink-500 rounded-3xl blur-xl opacity-20"></div>
-            {/* Header */}
-            <div className="relative flex items-center justify-between p-4 border-b border-gray-200/30 bg-gradient-to-r from-[#24697f]/5 via-teal-500/5 to-pink-500/5 backdrop-blur-sm sticky top-0 z-10 overflow-hidden">
-              {/* Background Effects */}
-              <div className="absolute inset-0 bg-gradient-to-r from-white/90 via-white/80 to-white/90"></div>
-              <div className="absolute top-0 left-0 w-32 h-full bg-gradient-to-r from-[#24697f]/10 to-transparent opacity-60"></div>
-              <div className="absolute top-0 right-0 w-32 h-full bg-gradient-to-l from-pink-500/10 to-transparent opacity-60"></div>
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-px bg-gradient-to-r from-transparent via-[#24697f]/30 to-transparent"></div>
-              
-              <div className="relative flex-1">
-                <div className="inline-block">
-                  <h2 className="text-xl font-semibold text-gray-900 leading-tight mb-1 relative">
-                    {selectedProperty.isReserved ? 'طلب حجز (عقار محجوز)' : 'طلب حجز جديد'}
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-16 h-px bg-gradient-to-r from-transparent via-[#24697f]/40 to-transparent"></div>
-                  </h2>
-                  <div className="flex items-center text-gray-500">
-                    <MessageCircle className="w-3 h-3 ml-1 text-[#24697f] drop-shadow-sm" />
-                    <span className="text-xs font-medium bg-gradient-to-r from-gray-600 to-gray-500 bg-clip-text text-transparent">{selectedProperty.title}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <button
-                onClick={closeContactModal}
-                className="relative p-2 hover:bg-white/60 rounded-lg transition-all duration-200 hover:scale-105 hover:shadow-md"
-              >
-                <X className="w-5 h-5 text-gray-600 hover:text-gray-900" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {/* Property Info */}
-              <div className="bg-gradient-to-br from-[#24697f]/10 via-teal-500/10 to-pink-500/10 rounded-3xl p-4 border border-[#24697f]/20 shadow-2xl backdrop-blur-sm mb-4">
-                <div className="space-y-2 text-center">
-                  <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-2 backdrop-blur-sm border border-white/50">
-                    <Home className="w-3 h-3 ml-1 text-[#24697f]" />
-                    <span className="font-medium text-xs">{selectedProperty.title}</span>
-                  </div>
-                  <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-2 backdrop-blur-sm border border-white/50">
-                    <MapPin className="w-3 h-3 ml-1 text-[#24697f]" />
-                    <span className="text-xs font-medium">{selectedProperty.wilayaId.name}</span>
-                  </div>
-                  <div className="flex items-center justify-center text-gray-700 bg-white/60 rounded-xl p-2 backdrop-blur-sm border border-white/50">
-                    <DollarSign className="w-3 h-3 ml-1 text-[#24697f]" />
-                    <span className="text-xs font-bold text-[#24697f]">{selectedProperty.pricePerDay} دج/يوم</span>
-                  </div>
-                </div>
-              </div>
-
-              {selectedProperty.isReserved && (
-                <div className="mb-4 p-3 bg-gradient-to-r from-pink-50/80 to-pink-100/80 rounded-xl border border-pink-200/50 backdrop-blur-sm">
-                  <div className="flex items-center text-pink-700 text-xs font-medium">
-                    <Calendar className="w-3 h-3 mr-2" />
-                    <span className="font-bold">محجوز حالياً</span>
-                  </div>
-                  <div className="text-pink-600 text-xs mt-1">
-                    يمكنك تقديم طلب الحجز وسيتم مراجعته من قبل المكتب
-                  </div>
-                  {selectedProperty.reservationEndDate && (
-                    <div className="text-pink-500 text-xs mt-2 font-medium">
-                      تنتهي الحجز: {new Date(selectedProperty.reservationEndDate).toLocaleDateString('ar-DZ', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <form onSubmit={handleContactSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 text-right">الاسم الكامل</label>
-                  <input
-                    type="text"
-                    required
-                    value={contactForm.name}
-                    onChange={(e) => setContactForm({...contactForm, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent text-right transition-all duration-300 text-sm"
-                    placeholder="أدخل اسمك الكامل"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 text-right">رقم الهاتف</label>
-                  <input
-                    type="tel"
-                    required
-                    value={contactForm.phone}
-                    onChange={(e) => setContactForm({...contactForm, phone: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent text-right transition-all duration-300 text-sm"
-                    placeholder="أدخل رقم الهاتف"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 text-right">تاريخ البدء</label>
-                  <input
-                    type="date"
-                    required
-                    value={contactForm.startDate}
-                    onChange={(e) => setContactForm({...contactForm, startDate: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent text-right transition-all duration-300 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 text-right">تاريخ الانتهاء</label>
-                  <input
-                    type="date"
-                    required
-                    value={contactForm.endDate}
-                    onChange={(e) => setContactForm({...contactForm, endDate: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent text-right transition-all duration-300 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1 text-right">رسالتك</label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={contactForm.message}
-                    onChange={(e) => setContactForm({...contactForm, message: e.target.value})}
-                    placeholder="أخبرنا عن احتياجاتك..."
-                    className="w-full px-3 py-2 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent text-right transition-all duration-300 text-sm resize-none"
-                  />
-                </div>
-              </form>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="border-t border-gray-200/30 bg-white/80 p-4 backdrop-blur-sm">
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={closeContactModal}
-                  className="px-4 py-2 border border-gray-300/50 text-gray-600 rounded-xl hover:bg-gray-100/80 transition-all duration-200 font-medium text-sm"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  onClick={handleContactSubmit}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:from-[#1a5366] hover:to-teal-700 text-white rounded-xl font-medium transition-all duration-200 text-sm"
-                >
-                  إرسال طلب الحجز
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ContactModal
+        property={selectedProperty}
+        isOpen={showContactModal}
+        onClose={closeContactModal}
+      />
 
       {/* Property Preview Modal */}
       <PropertyPreviewModal
@@ -780,9 +1014,10 @@ const PropertySearch = () => {
         onClose={closeReservationModal}
       />
 
+      
       {/* Photo Preview Modal */}
       {showPhotoPreview && selectedProperty && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
           {/* Close Button */}
           <button
             onClick={closePhotoPreview}

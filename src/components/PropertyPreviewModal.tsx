@@ -94,10 +94,21 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
       onClick={onClose}
     >
       <div 
-        className="bg-white/95 backdrop-blur-2xl rounded-3xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col shadow-3xl border border-white/70 transition-all duration-300 ease-out relative"
+        className="bg-white/95 backdrop-blur-2xl rounded-3xl w-full max-w-2xl max-h-[95vh] overflow-y-auto overflow-x-hidden flex flex-col shadow-3xl border border-white/70 transition-all duration-300 ease-out relative" 
+        style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#24697f] via-teal-500 to-pink-500 rounded-3xl blur-xl opacity-20"></div>
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            div::-webkit-scrollbar {
+              display: none;
+            }
+          `
+        }} />
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#24697f] via-teal-500 to-pink-500 rounded-3xl blur-xl opacity-20 pointer-events-none"></div>
         {/* Header */}
         <div className="relative flex items-center justify-between p-4 border-b border-gray-200/30 bg-gradient-to-r from-[#24697f]/5 via-teal-500/5 to-pink-500/5 backdrop-blur-sm sticky top-0 z-10 overflow-hidden">
           {/* Background Effects */}

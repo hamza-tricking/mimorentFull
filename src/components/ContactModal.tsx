@@ -26,18 +26,17 @@ interface Property {
   propertyType?: string;
   amenities?: string[];
   reservationEndDate?: string;
-  reserveTheProperty?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-interface ReservationModalProps {
+interface ContactModalProps {
   property: Property | null;
   isOpen: boolean;
   onClose: () => void;
 }
 
-const ReservationModal: React.FC<ReservationModalProps> = ({
+const ContactModal: React.FC<ContactModalProps> = ({
   property,
   isOpen,
   onClose
@@ -58,48 +57,6 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
   const [loading, setLoading] = useState(false);
 
   const totalSteps = 6;
-
-  // Validation function for monthly reservation dates
-  const validateMonthlyReservation = (startDate: Date, endDate: Date): { isValid: boolean; message?: string } => {
-    // If property is daily, no monthly validation needed
-    if (!property || property.reserveTheProperty !== 'monthly') {
-      return { isValid: true };
-    }
-    
-    // For monthly reservations, check if end date is exactly one or more months after start date
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    // Calculate the difference in months
-    const monthsDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-    const dayDiff = end.getDate() - start.getDate();
-    
-    // Check if it's exactly at least one month
-    if (monthsDiff < 1) {
-      return { 
-        isValid: false, 
-        message: 'فترة الحجز غير صحيحة. يجب أن يكون تاريخ الانتهاء بعد شهر واحد على الأقل من تاريخ البدء للحجوزات الشهرية.' 
-      };
-    }
-    
-    // For exactly one month, day should be the same
-    if (monthsDiff === 1 && dayDiff !== 0) {
-      return { 
-        isValid: false, 
-        message: 'فترة الحجز غير صحيحة. للحجز الشهري، يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر التالي (مثال: 03/15/2026 → 04/15/2026).' 
-      };
-    }
-    
-    // For multiple months, day should be the same
-    if (monthsDiff > 1 && dayDiff !== 0) {
-      return { 
-        isValid: false, 
-        message: 'فترة الحجز غير صحيحة. للحجز الشهري، يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر المناسب (مثال: 03/15/2026 → 06/15/2026 لمدة 3 أشهر).' 
-      };
-    }
-    
-    return { isValid: true };
-  };
 
   // Reset form and step when modal opens/closes
   useEffect(() => {
@@ -384,16 +341,6 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
           setError('يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء');
           return false;
         }
-        
-        // Monthly reservation validation
-        const monthlyValidation = validateMonthlyReservation(
-          new Date(formData.startDate), 
-          new Date(formData.endDate)
-        );
-        if (!monthlyValidation.isValid) {
-          setError(monthlyValidation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
-          return false;
-        }
         break;
       case 5:
         // Total price is calculated automatically, so no validation needed
@@ -437,7 +384,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
         wilayaId: property.wilayaId._id,
         startDate: formData.startDate,
         endDate: formData.endDate,
-        orderType: 'notreserver_property',
+        orderType: 'reserver_property', // For properties already reserved
         priority: 'medium',
         totalPrice: calculateTotalPrice(),
         isMarried: Boolean(formData.isMarried), // Ensure boolean
@@ -694,21 +641,6 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
         return (
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-gray-900 mb-4 text-center">تواريخ الحجز</h3>
-            
-            {/* Monthly reservation note */}
-            {property?.reserveTheProperty === 'monthly' && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-amber-800">
-                    <p className="font-medium mb-1">ملاحظة هامة للحجز الشهري:</p>
-                    <p>يجب أن يكون تاريخ الانتهاء هو نفس اليوم من الشهر التالي أو الأشهر التالية.</p>
-                    <p className="text-xs mt-1 text-amber-700">مثال: 15 مارس → 15 أبريل (شهر واحد) أو 15 يونيو (3 أشهر)</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center justify-end">
@@ -722,7 +654,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
                   onChange={handleInputChange}
                   required
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-3 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-right"
+                  className="w-full px-4 py-3 border border-gray-200/60 bg-gray-50/80 backdrop-blur-sm rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#24697f]/50 focus:border-[#24697f] transition-all duration-300 text-right placeholder-gray-500 hover:bg-gray-100/80 hover:border-gray-300/80"
                 />
               </div>
               <div>
@@ -737,7 +669,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
                   onChange={handleInputChange}
                   required
                   min={formData.startDate || new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-3 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-right"
+                  className="w-full px-4 py-3 border border-gray-200/60 bg-gray-50/80 backdrop-blur-sm rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#24697f]/50 focus:border-[#24697f] transition-all duration-300 text-right placeholder-gray-500 hover:bg-gray-100/80 hover:border-gray-300/80"
                 />
               </div>
             </div>
@@ -790,7 +722,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
                 value={formData.notes || ''}
                 onChange={handleInputChange}
                 rows={4}
-                className="w-full px-4 py-3 border border-gray-200/50 bg-white/50 backdrop-blur-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-right resize-none"
+                className="w-full px-4 py-3 border border-gray-200/60 bg-gray-50/80 backdrop-blur-sm rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#24697f]/50 focus:border-[#24697f] transition-all duration-300 text-right resize-none placeholder-gray-500 hover:bg-gray-100/80 hover:border-gray-300/80"
                 placeholder="أي ملاحظات إضافية أو طلبات خاصة..."
               />
             </div>
@@ -893,7 +825,7 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
           
           <div className="relative flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-gray-900 leading-tight mb-1 truncate">
-              طلب حجز جديد
+              طلب حجز (عقار محجوز)
             </h2>
             <div className="flex items-center text-gray-500">
               <Home className="w-3 h-3 ml-1 text-[#24697f] flex-shrink-0" />
@@ -936,6 +868,26 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
                 />
               )}
             </div>
+          </div>
+
+          {/* Reserved Property Notice */}
+          <div className="mb-4 p-3 bg-gradient-to-r from-pink-50/80 to-pink-100/80 rounded-xl border border-pink-200/50 backdrop-blur-sm">
+            <div className="flex items-center text-pink-700 text-xs font-medium">
+              <Calendar className="w-3 h-3 mr-2" />
+              <span className="font-bold">محجوز حالياً</span>
+            </div>
+            <div className="text-pink-600 text-xs mt-1">
+              يمكنك تقديم طلب الحجز وسيتم مراجعته من قبل المكتب
+            </div>
+            {property.reservationEndDate && (
+              <div className="text-pink-500 text-xs mt-2 font-medium">
+                تنتهي الحجز: {new Date(property.reservationEndDate).toLocaleDateString('ar-DZ', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })}
+              </div>
+            )}
           </div>
 
           {/* Step Indicator */}
@@ -1012,4 +964,4 @@ const ReservationModal: React.FC<ReservationModalProps> = ({
   );
 };
 
-export default ReservationModal;
+export default ContactModal;
