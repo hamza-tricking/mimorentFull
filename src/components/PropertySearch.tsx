@@ -22,6 +22,7 @@ interface Property {
   officeId: {
     _id: string;
     name: string;
+    phone?: string;
   };
   available: boolean;
   isReserved: boolean;
@@ -669,7 +670,7 @@ const PropertySearch = () => {
 
               {/* Separate Reservation Date Section */}
               <div className="bg-gradient-to-br mt-4 from-indigo-50/80 via-purple-50/80 to-pink-50/80 backdrop-blur-sm rounded-2xl border border-indigo-200/50 shadow-lg">
-                <div className="p-6 ">
+                <div className="p-4 sm:p-6 ">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold text-gray-900 flex items-center">
                       <Calendar className="w-5 h-5 mr-2 text-indigo-600" />
@@ -677,7 +678,7 @@ const PropertySearch = () => {
                     </h3>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {/* Start Date */}
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-gray-700 flex items-center">
@@ -691,7 +692,7 @@ const PropertySearch = () => {
                           type="date"
                           value={dateRange.startDate}
                           onChange={(e) => handleStartDateChange(e.target.value)}
-                          className="relative w-full pl-10 pr-3 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
+                          className="relative w-full pl-10 pr-3 py-2.5 sm:py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
                         />
                       </div>
                     </div>
@@ -710,7 +711,7 @@ const PropertySearch = () => {
                           value={dateRange.endDate}
                           onChange={(e) => handleEndDateChange(e.target.value)}
                           min={dateRange.startDate}
-                          className="relative w-full pl-10 pr-3 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
+                          className="relative w-full pl-10 pr-3 py-2.5 sm:py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm"
                         />
                       </div>
                     </div>
@@ -857,6 +858,54 @@ const PropertySearch = () => {
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                       
+                      {/* Prices overlay on image */}
+                      <div className="absolute top-3 left-3 z-10">
+                        <div className="relative group flex items-center">
+                          {property.priceBeforeDiscountPerDay && property.priceBeforeDiscountPerDay > property.pricePerDay && (
+                            <div className="flex items-center mr-2 relative">
+                              <div className="absolute -top-4 -right-2 z-20">
+                                <div className="relative">
+                                  <div className="absolute inset-0 bg-orange-400 blur-md opacity-60 animate-pulse"></div>
+                                  <div className="relative bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg border border-orange-300/50">
+                                    <span className="flex items-center">
+                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                      </svg>
+                                      -{Math.round(((property.priceBeforeDiscountPerDay - property.pricePerDay) / property.priceBeforeDiscountPerDay) * 100)}%
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="bg-gradient-to-r from-orange-600/80 to-orange-500/80 backdrop-blur-md rounded-lg px-2 py-1 shadow-lg border border-orange-400/30">
+                                <span className="text-white text-sm line-through font-medium">
+                                  {(property as any).reserveTheProperty === 'monthly' 
+                                    ? (property.priceBeforeDiscountPerDay || 0) * 30 
+                                    : property.priceBeforeDiscountPerDay}
+                                </span>
+                                <span className="text-white text-xs line-through font-medium ml-1">
+                                  {(property as any).reserveTheProperty === 'monthly' ? 'دج/شهر' : 'دج/يوم'}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          <div className="relative group">
+                            <div className="absolute inset-0 bg-green-500/30 backdrop-blur-sm rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-all duration-300"></div>
+                            <div className="relative bg-gradient-to-r from-green-600/90 to-emerald-600/90 backdrop-blur-md rounded-xl px-3 py-2 shadow-xl group-hover:shadow-2xl transition-all duration-300 border border-green-400/30">
+                              <div className="flex items-center">
+                                <span className="text-white font-bold text-base">
+                                  {(property as any).reserveTheProperty === 'monthly' 
+                                    ? property.pricePerDay * 30 
+                                    : property.pricePerDay}
+                                </span>
+                                <span className="text-white text-xs ml-1.5 font-medium">
+                                  {(property as any).reserveTheProperty === 'monthly' ? 'دج/شهر' : 'دج/يوم'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
                       {/* Navigation Buttons - Only show if multiple images */}
                       {property.images.length > 1 && (
                         <>
@@ -922,15 +971,7 @@ const PropertySearch = () => {
 
                 {/* Property Details */}
                 <div className="p-4 bg-gradient-to-b from-white/95 via-white/90 to-white/80 backdrop-blur-sm">
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-lg font-bold text-gray-900 group-hover:text-[#24697f] transition-colors duration-300 flex-1 mr-2">{property.title}</h3>
-                    <div className="flex-shrink-0">
-                      <span className="inline-flex items-center px-2 py-1 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 border border-[#24697f]/20 rounded-lg">
-                        <span className="text-[#24697f] font-bold text-sm">{property.pricePerDay}</span>
-                        <span className="text-[#24697f] text-xs ml-1 mx-2">دج/يوم</span>
-                      </span>
-                    </div>
-                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 group-hover:text-[#24697f] transition-colors duration-300 mb-3">{property.title}</h3>
                   
                   {/* Property Tags */}
                   <div className="flex flex-wrap gap-2 mb-3">
@@ -984,10 +1025,16 @@ const PropertySearch = () => {
                       <MapPin className="w-3 h-3 mr-1 text-[#24697f]" />
                       {property.wilayaId.name}
                     </div>
-                    <div className="flex items-center text-gray-700 text-xs font-medium bg-white/60 px-2 py-1.5 rounded-full border border-gray-200/50">
-                      <Phone className="w-3 h-3 mr-1 text-[#24697f]" />
-                      {property.officeId.name}
-                    </div>
+                    {property.officeId.phone && (
+                      <a
+                        href={`tel:${property.officeId.phone}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center text-green-700 text-xs font-medium bg-green-50/80 px-2 py-1.5 rounded-full border border-green-200/50 hover:bg-green-100/80 transition-all duration-300 hover:scale-105"
+                      >
+                        <Phone className="w-3 h-3 mr-1 text-green-600" />
+                        {property.officeId.phone}
+                      </a>
+                    )}
                   </div>
 
                   {property.isReserved && property.reservationEndDate && (

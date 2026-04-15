@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, X, Check, Clock, Calendar, Home } from 'lucide-react';
+import { Bell, X, Check, Clock, Calendar, Home, ShoppingBag, Settings, AlertTriangle, Info } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import LoadingSpinner from '../LoadingSpinner';
 
@@ -35,6 +35,9 @@ interface Notification {
     customerName?: string;
     propertyTitle?: string;
     reminderDateTime?: string;
+    orderId?: string;
+    reminderType?: string;
+    daysBeforeEnd?: number;
   };
 }
 
@@ -177,8 +180,8 @@ export default function EmployerNotificationDropdown() {
     }
   };
 
-  // Handle notification click - mark as seen
-  const handleNotificationClick = async (notificationId: string) => {
+  // Handle notification click - mark as seen and navigate
+  const handleNotificationClick = async (notificationId: string, notification: Notification) => {
     try {
       const token = localStorage.getItem('token');
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -228,6 +231,42 @@ export default function EmployerNotificationDropdown() {
           )
         );
       }
+
+      // Navigate based on notification type
+      console.log('🚀 Navigating based on notification type:', notification.type);
+      
+      // Close dropdown first
+      setIsAnimating(true);
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsAnimating(false);
+        
+        // Navigate based on type
+        switch (notification.type) {
+          case 'order':
+            console.log('🔄 Navigating to orders tab for order');
+            const orderEvent = new CustomEvent('navigateToOrders', { bubbles: true });
+            window.dispatchEvent(orderEvent);
+            break;
+            
+          case 'reservation':
+            console.log('🔄 Navigating to reservations tab for reservation');
+            const reservationEvent = new CustomEvent('navigateToReservations', { bubbles: true });
+            window.dispatchEvent(reservationEvent);
+            break;
+            
+          case 'reminder':
+          case 'system':
+          case 'alert':
+          case 'property':
+          default:
+            console.log('🔄 Navigating to notifications tab for notification type:', notification.type);
+            const notificationEvent = new CustomEvent('navigateToNotifications', { bubbles: true });
+            window.dispatchEvent(notificationEvent);
+            break;
+        }
+      }, 150);
+      
     } catch (error) {
       console.error('Error handling notification click:', error);
     }
@@ -357,10 +396,56 @@ export default function EmployerNotificationDropdown() {
         return <Clock className="w-4 h-4 text-blue-400" />;
       case 'reservation':
         return <Calendar className="w-4 h-4 text-green-400" />;
+      case 'order':
+        return <ShoppingBag className="w-4 h-4 text-purple-400" />;
+      case 'system':
+        return <Settings className="w-4 h-4 text-gray-400" />;
+      case 'alert':
+        return <AlertTriangle className="w-4 h-4 text-red-400" />;
       case 'property':
         return <Home className="w-4 h-4 text-orange-400" />;
       default:
         return <Bell className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
+  // Get notification type color and background
+  const getNotificationTypeStyle = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'bg-blue-100 text-blue-600 border-blue-200';
+      case 'reservation':
+        return 'bg-green-100 text-green-600 border-green-200';
+      case 'order':
+        return 'bg-purple-100 text-purple-600 border-purple-200';
+      case 'system':
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+      case 'alert':
+        return 'bg-red-100 text-red-600 border-red-200';
+      case 'property':
+        return 'bg-orange-100 text-orange-600 border-orange-200';
+      default:
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  };
+
+  // Get notification type label in Arabic
+  const getNotificationTypeLabel = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'تذكير';
+      case 'reservation':
+        return 'حجز';
+      case 'order':
+        return 'طلب';
+      case 'system':
+        return 'نظام';
+      case 'alert':
+        return 'تنبيه';
+      case 'property':
+        return 'عقار';
+      default:
+        return 'عام';
     }
   };
 
@@ -486,19 +571,27 @@ export default function EmployerNotificationDropdown() {
                   className={`p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
                     !notification.read ? 'bg-blue-50' : ''
                   }`}
-                  onClick={() => handleNotificationClick(notification._id)}
+                  onClick={() => handleNotificationClick(notification._id, notification)}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-1">
+                    {/* Notification Type Icon */}
+                    <div className={`p-2 rounded-lg border ${getNotificationTypeStyle(notification.type)}`}>
                       {getNotificationIcon(notification.type)}
                     </div>
+                    
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <h4 className={`font-medium text-sm truncate ${
-                          !notification.read ? 'text-gray-900' : 'text-gray-600'
-                        }`}>
-                          {notification.title}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className={`font-medium text-sm truncate ${
+                            !notification.read ? 'text-gray-900' : 'text-gray-600'
+                          }`}>
+                            {notification.title}
+                          </h4>
+                          {/* Type Badge */}
+                          <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium border ${getNotificationTypeStyle(notification.type)}`}>
+                            {getNotificationTypeLabel(notification.type)}
+                          </span>
+                        </div>
                         {!notification.read && (
                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                         )}
@@ -518,6 +611,23 @@ export default function EmployerNotificationDropdown() {
                       {notification.metadata?.customerName && (
                         <p className="text-xs text-gray-500 mb-1">
                           العميل: {notification.metadata.customerName}
+                        </p>
+                      )}
+                      
+                      {notification.type === 'order' && (
+                        <p className="text-xs text-gray-500 mb-1">
+                          طلب رقم: {notification.metadata?.orderId || 'غير محدد'}
+                        </p>
+                      )}
+                      
+                      {notification.type === 'reminder' && (
+                        <p className="text-xs text-gray-500 mb-1">
+                          {notification.metadata?.reminderType === 'before_end' 
+                            ? `قبل ${notification.metadata?.daysBeforeEnd || 0} يوم`
+                            : notification.metadata?.reminderType === 'specific_time'
+                            ? 'وقت محدد'
+                            : 'تذكير عام'
+                          }
                         </p>
                       )}
                       

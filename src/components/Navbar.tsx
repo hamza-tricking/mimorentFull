@@ -56,7 +56,7 @@ export default function Navbar() {
 
   const getAuthButton = () => {
     if (isLoggedIn) {
-      if (userRole === 'admin' || userRole === 'sous admin') {
+      if (userRole === 'admin' || userRole === 'sousAdmin') {
         return {
           text: 'Dashboard',
           href: '/admin/dashboard',

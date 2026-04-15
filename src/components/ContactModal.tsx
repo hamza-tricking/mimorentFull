@@ -17,6 +17,7 @@ interface Property {
   officeId: {
     _id: string;
     name: string;
+    phone?: string;
   };
   available: boolean;
   isReserved: boolean;
@@ -831,6 +832,15 @@ const ContactModal: React.FC<ContactModalProps> = ({
               <Home className="w-3 h-3 ml-1 text-[#24697f] flex-shrink-0" />
               <span className="text-xs font-medium truncate">{property.title}</span>
             </div>
+            {property.officeId.phone && (
+              <a
+                href={`tel:${property.officeId.phone}`}
+                className="flex items-center text-green-600 hover:text-green-700 mt-1 transition-colors duration-200"
+              >
+                <Phone className="w-3 h-3 ml-1 flex-shrink-0" />
+                <span className="text-xs font-medium">{property.officeId.phone}</span>
+              </a>
+            )}
           </div>
           
           <button

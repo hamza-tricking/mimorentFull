@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Home, Calendar, User, LogOut,  Mail, Bell, ChevronDown, RefreshCw } from 'lucide-react';
+import { Home, Calendar, User, LogOut,  Mail, Bell, ChevronDown, RefreshCw, Clock, ShoppingBag, Settings, AlertTriangle, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../contexts/ToastContext';
 import NotificationDropdown from '../../components/employer/NotificationDropdown';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import EmployeeProfileModal from '../../components/employer/EmployeeProfileModal';
 import ImageUpload from '../../components/ImageUpload';
+import ContractModal from '../../components/admin/ContractModal';
+import InvoiceModal from '../../components/admin/InvoiceModal';
 
 interface Property {
   _id: string;
@@ -146,6 +148,11 @@ export default function EmployerDashboard() {
     contractDate: ''
   });
 
+  // Invoice modal state
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<any>(null);
+  const [showMakeAvailableConfirmModal, setShowMakeAvailableConfirmModal] = useState(false);
+
   // Calendar and expanded cards state
   const [expandedPropertyCards, setExpandedPropertyCards] = useState<Set<string>>(new Set());
   const [preSelectedDates, setPreSelectedDates] = useState<{ startDate: Date; endDate: Date } | null>(null);
@@ -215,9 +222,69 @@ export default function EmployerDashboard() {
     return date.toLocaleDateString('ar-DZ', { year: 'numeric', month: '2-digit', day: '2-digit' });
   };
 
+  // Get notification type icon
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return <Clock className="w-5 h-5" />;
+      case 'reservation':
+        return <Calendar className="w-5 h-5" />;
+      case 'order':
+        return <ShoppingBag className="w-5 h-5" />;
+      case 'system':
+        return <Settings className="w-5 h-5" />;
+      case 'alert':
+        return <AlertTriangle className="w-5 h-5" />;
+      case 'property':
+        return <Home className="w-5 h-5" />;
+      default:
+        return <Info className="w-5 h-5" />;
+    }
+  };
+
+  // Get notification type color and background
+  const getNotificationTypeStyle = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+      case 'reservation':
+        return 'bg-green-500/20 text-green-300 border-green-500/30';
+      case 'order':
+        return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+      case 'system':
+        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+      case 'alert':
+        return 'bg-red-500/20 text-red-300 border-red-500/30';
+      case 'property':
+        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+      default:
+        return 'bg-white/20 text-white/80 border-white/30';
+    }
+  };
+
+  // Get notification type label in Arabic
+  const getNotificationTypeLabel = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'تذكير';
+      case 'reservation':
+        return 'حجز';
+      case 'order':
+        return 'طلب';
+      case 'system':
+        return 'نظام';
+      case 'alert':
+        return 'تنبيه';
+      case 'property':
+        return 'عقار';
+      default:
+        return 'عام';
+    }
+  };
+
   // Validation function for monthly reservation dates
   const validateMonthlyReservation = (startDate: Date, endDate: Date, propertyId: string): { isValid: boolean; message?: string } => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     
     // If property is daily, no monthly validation needed
     if (!property || property.reserveTheProperty !== 'monthly') {
@@ -275,7 +342,7 @@ export default function EmployerDashboard() {
 
   // Function to calculate total price based on property price and reservation dates
   const calculateReservationPrice = (startDate: string, endDate: string, propertyId: string): number => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     if (!property) return 0;
     
     const start = new Date(startDate);
@@ -297,7 +364,7 @@ export default function EmployerDashboard() {
     if (userData) {
       const parsedUser = JSON.parse(userData);
       
-      if (parsedUser.role === 'admin' || parsedUser.role === 'sous admin') {
+      if (parsedUser.role === 'admin' || parsedUser.role === 'sousAdmin') {
         router.push('/admin/dashboard');
         return;
       }
@@ -374,7 +441,7 @@ export default function EmployerDashboard() {
           const data = await response.json();
           if (data.success && data.data.properties) {
             // Compare with current properties and update if changed
-            const currentPropertiesMap = new Map(properties.map(p => [p._id, p]));
+            const currentPropertiesMap = new Map(properties.filter(p => p != null).map(p => [p._id, p]));
             const hasChanges = data.data.properties.some((newProperty: any) => {
               const currentProperty = currentPropertiesMap.get(newProperty._id);
               return !currentProperty || 
@@ -411,12 +478,18 @@ export default function EmployerDashboard() {
       setActiveTab('orders');
     };
 
+    const handleNavigateToReservations = () => {
+      setActiveTab('reservations');
+    };
+
     window.addEventListener('navigateToNotifications', handleNavigateToNotifications);
     window.addEventListener('navigateToOrders', handleNavigateToOrders);
+    window.addEventListener('navigateToReservations', handleNavigateToReservations);
 
     return () => {
       window.removeEventListener('navigateToNotifications', handleNavigateToNotifications);
       window.removeEventListener('navigateToOrders', handleNavigateToOrders);
+      window.removeEventListener('navigateToReservations', handleNavigateToReservations);
     };
   }, []);
 
@@ -430,7 +503,7 @@ export default function EmployerDashboard() {
         ? editingReservation.propertyId 
         : editingReservation.propertyId?._id || (editingReservation.propertyId as any)?.id || '';
       
-      const property = properties.find((p: any) => p._id === propertyId);
+      const property = properties.find((p: any) => p && p._id === propertyId);
       
       if (property) {
         console.log('🏠 Found property:', property.title);
@@ -490,7 +563,7 @@ export default function EmployerDashboard() {
       await fetchReservations();
       
       // Find the current property state
-      const currentProperty = properties.find(p => p._id === propertyId);
+      const currentProperty = properties.find(p => p && p._id === propertyId);
       
       if (!currentProperty) {
         addToast('العقار غير موجود', 'error');
@@ -638,7 +711,7 @@ export default function EmployerDashboard() {
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       
       // Update local state immediately
-      const updatedNotifications = notifications.map(n => ({
+      const updatedNotifications = notifications.filter(n => n != null).map(n => ({
         ...n,
         seenBy: [...(n.seenBy || []), { 
           _id: currentUser.id || currentUser._id, 
@@ -675,7 +748,7 @@ export default function EmployerDashboard() {
       });
       
       if (readResponse.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setNotifications(prev => prev.filter(n => n != null).map(n => ({ ...n, read: true })));
       }
     } catch (error) {
       console.error('Error marking all notifications as seen:', error);
@@ -754,7 +827,7 @@ export default function EmployerDashboard() {
 
       if (response.ok) {
         // Update local state
-        setOrders(orders.map(order => 
+        setOrders(orders.filter(order => order != null).map(order => 
           order._id === orderId 
             ? { ...order, priority: editPriority, adminNotes: editAdminNotes }
             : order
@@ -787,7 +860,7 @@ export default function EmployerDashboard() {
       });
 
       if (response.ok) {
-        setOrders(orders.map(order => 
+        setOrders(orders.filter(order => order != null).map(order => 
           order._id === orderId 
             ? { ...order, status: 'approved' }
             : order
@@ -813,7 +886,7 @@ export default function EmployerDashboard() {
       });
 
       if (response.ok) {
-        setOrders(orders.map(order => 
+        setOrders(orders.filter(order => order != null).map(order => 
           order._id === orderId 
             ? { ...order, status: 'rejected' }
             : order
@@ -848,15 +921,13 @@ export default function EmployerDashboard() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        
         // Update the order in local state with the new employer notes
         setOrders(prevOrders => 
-          prevOrders.map(order => 
+          prevOrders.filter(order => order != null).map(order => 
             order._id === orderId 
               ? { 
                   ...order, 
-                  employerNotes: data.order?.employerNotes || [
+                  employerNotes: [
                     ...(order.employerNotes || []),
                     {
                       employerId: user?.id,
@@ -881,7 +952,7 @@ export default function EmployerDashboard() {
   const handleBookNow = async (order: any) => {
     try {
       // Find the property for this order
-      const property = properties.find(p => p._id === (order.propertyId?._id || order.propertyId));
+      const property = properties.find(p => p && p._id === (order.propertyId?._id || order.propertyId));
       
       if (!property) {
         setOrderError('العقار غير موجود');
@@ -962,7 +1033,7 @@ export default function EmployerDashboard() {
       ? reservation.propertyId 
       : reservation.propertyId?._id || (reservation.propertyId as any)?.id || '';
     
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     if (property) {
       console.log('🏠 Found property for reservation:', property.title);
       setSelectedProperty(property);
@@ -1188,7 +1259,7 @@ export default function EmployerDashboard() {
       
       // If date is reserved, open edit modal
       if (reservationInfo) {
-        const property = properties.find((p: any) => p._id === propertyId);
+        const property = properties.find((p: any) => p && p._id === propertyId);
         if (property) {
           setSelectedProperty(property);
         }
@@ -1223,7 +1294,7 @@ export default function EmployerDashboard() {
           setIsSelecting(false);
           
           // Open add reservation modal with selected dates
-          const property = properties.find((p: any) => p._id === propertyId);
+          const property = properties.find((p: any) => p && p._id === propertyId);
           if (property) {
             setSelectedProperty(property);
           }
@@ -1292,7 +1363,7 @@ export default function EmployerDashboard() {
     const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
     
     // Get the property and its reservations
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     const propertyReservations = property?.reservationIds || [];
     
     // Color palette for different reservations
@@ -1444,7 +1515,7 @@ export default function EmployerDashboard() {
                   key={reservation._id} 
                   className={`p-1.5 sm:p-2 ${colors.light} rounded border ${colors.lightBorder} cursor-pointer hover:opacity-80 transition-opacity`}
                   onClick={() => {
-                    const fullReservation = reservations.find((r: any) => r._id === reservation._id);
+                    const fullReservation = reservations.find((r: any) => r && r._id === reservation._id);
                     if (fullReservation) {
                       openEditReservationModal(fullReservation);
                     }
@@ -1913,7 +1984,7 @@ export default function EmployerDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-2">
               {properties
                 .filter((property: any) => {
                   // Capacity filter
@@ -1976,7 +2047,7 @@ export default function EmployerDashboard() {
                       // reservationItem might be an object (if populated) or just an ID string
                       const reservationId = typeof reservationItem === 'string' ? reservationItem : reservationItem.id || reservationItem._id;
                       
-                      const reservation = reservations.find((r: any) => r._id === reservationId);
+                      const reservation = reservations.find((r: any) => r && r._id === reservationId);
                       if (!reservation) {
                         return false;
                       }
@@ -2326,23 +2397,51 @@ export default function EmployerDashboard() {
                   تحديث
                 </button>
               </div>
+              
+              {/* Notification Types Legend */}
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <p className="text-white/70 text-sm mb-2">أنواع الإشعارات:</p>
+                <div className="flex flex-wrap gap-2">
+                  {['reminder', 'reservation', 'order', 'system', 'alert', 'property'].map((type) => (
+                    <div key={type} className={`flex items-center gap-1 px-2 py-1 rounded-lg border ${getNotificationTypeStyle(type)}`}>
+                      {getNotificationIcon(type)}
+                      <span className="text-xs font-medium">{getNotificationTypeLabel(type)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {notifications.map((notification) => (
-                <div key={notification._id} className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-white">{notification.title}</h3>
+                <div key={notification._id} className={`bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 ${getNotificationTypeStyle(notification.type)}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-start gap-3 flex-1">
+                      {/* Notification Type Icon */}
+                      <div className={`p-2 rounded-lg ${getNotificationTypeStyle(notification.type)}`}>
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-white">{notification.title}</h3>
+                          {/* Type Badge */}
+                          <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium border ${getNotificationTypeStyle(notification.type)}`}>
+                            {getNotificationTypeLabel(notification.type)}
+                          </span>
+                        </div>
+                        <p className="text-white/80 text-sm mb-2">{notification.message}</p>
+                        <div className="flex items-center justify-between text-xs text-white/60">
+                          <span>{new Date(notification.createdAt).toLocaleDateString('ar-DZ')}</span>
+                          <span>{new Date(notification.createdAt).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                    </div>
                     <span className={`px-2 py-1 rounded-full text-xs ${
                       notification.read ? 'bg-gray-500/20 text-gray-300' : 'bg-blue-500/20 text-blue-300'
                     }`}>
                       {notification.read ? 'مقروء' : 'جديد'}
                     </span>
-                  </div>
-                  <p className="text-white/80 text-sm mb-2">{notification.message}</p>
-                  <div className="flex items-center justify-between text-xs text-white/60">
-                    <span>{new Date(notification.createdAt).toLocaleDateString('ar-DZ')}</span>
-                    <span>{new Date(notification.createdAt).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
               ))}
@@ -2383,7 +2482,7 @@ export default function EmployerDashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {orders.map((order) => (
+                  {orders.filter(order => order != null).map((order) => (
                     <div key={order._id} className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 overflow-hidden">
                       {/* Compact Summary Row - Always Visible */}
                       <div 
@@ -2731,7 +2830,7 @@ export default function EmployerDashboard() {
                     const propertyId = typeof editingReservation.propertyId === 'string' 
                       ? editingReservation.propertyId 
                       : editingReservation.propertyId?._id || (editingReservation.propertyId as any)?.id || '';
-                    property = properties.find((p: any) => p._id === propertyId);
+                    property = properties.find((p: any) => p && p._id === propertyId);
                   } else {
                     // Adding mode: use selectedProperty
                     property = selectedProperty;
@@ -2827,7 +2926,7 @@ export default function EmployerDashboard() {
                     value={formData.startDate}
                     onChange={(e) => {
                       const startDate = e.target.value;
-                      const property = properties.find((p: any) => p._id === selectedProperty._id);
+                      const property = properties.find((p: any) => p && p._id === selectedProperty._id);
                       
                       // Auto-calculate end date for monthly properties
                       if (property && property.reserveTheProperty === 'monthly' && startDate) {
@@ -3108,7 +3207,7 @@ export default function EmployerDashboard() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">الحالة العائلية</label>
                 {(() => {
-                  const property = properties.find((p: any) => p._id === selectedProperty._id);
+                  const property = properties.find((p: any) => p && p._id === selectedProperty._id);
                   const isFamilyProperty = property?.targetAudience === 'family';
                   
                   if (isFamilyProperty) {
@@ -3238,7 +3337,7 @@ export default function EmployerDashboard() {
                 </div>
               </div>
 
-              <div className="flex space-x-3 pt-4">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -3247,21 +3346,48 @@ export default function EmployerDashboard() {
                     setPreSelectedDates(null);
                     setReservationError(null);
                   }}
-                  className="flex-1 px-4 py-2 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
                 >
                   إلغاء
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowContractModal(true)}
-                  className="flex-1 px-4 py-2 mx-2  bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-700 transition-colors"
+                  className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base"
                 >
                   إنشاء عقد
                 </button>
                 <button
+                  type="button"
+                  onClick={() => {
+                    // Generate invoice data from formData state
+                    const invoice = {
+                      invoiceNumber: `INV-${Date.now()}`,
+                      invoiceDate: new Date().toISOString().split('T')[0],
+                      customerName: formData.customerName || '',
+                      customerPhone: formData.customerPhone || '',
+                      propertyName: selectedProperty ? properties.find(p => p && p._id === selectedProperty._id)?.title || '' : '',
+                      propertyAddress: 'شارع العقار، المشرية',
+                      startDate: formData.startDate || '',
+                      endDate: formData.endDate || '',
+                      totalPrice: formData.totalPrice || 0,
+                      paidAmount: formData.paidAmount || 0,
+                      remainingAmount: formData.remainingAmount || 0,
+                      paymentStatus: formData.paymentStatus as 'pending' | 'partial' | 'paid',
+                      reservationId: `RES-${Date.now()}`,
+                      notes: formData.notes || []
+                    };
+                    setInvoiceData(invoice);
+                    setShowInvoiceModal(true);
+                  }}
+                  className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-lg hover:bg-purple-800 transition-colors text-sm sm:text-base"
+                >
+                  الفاتورة
+                </button>
+                <button
                   type="submit"
                   disabled={isSubmittingReservation}
-                  className={`flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 ${
+                  className={`flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base ${
                     isSubmittingReservation ? 'opacity-75 cursor-not-allowed' : ''
                   }`}
                 >
@@ -3278,6 +3404,15 @@ export default function EmployerDashboard() {
                     </>
                   )}
                 </button>
+                {editingReservation && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMakeAvailableConfirmModal(true)}
+                    className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm sm:text-base"
+                  >
+                    جعل الحجز متاح
+                  </button>
+                )}
               </div>
               
               {/* Duplicate Error Display Before Submit */}
@@ -3295,312 +3430,169 @@ export default function EmployerDashboard() {
         </div>
       )}
 
-      {/* Contract Modal */}
-      {showContractModal && (
+      {/* Make Available Confirmation Modal */}
+      {showMakeAvailableConfirmModal && editingReservation && (
         <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 "
-          onClick={() => setShowContractModal(false)}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 "
+          onClick={() => setShowMakeAvailableConfirmModal(false)}
         >
           <div 
-            className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-4xl relative z-[100000] max-h-[90vh] overflow-y-auto"
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#cbd5e1 #f1f5f9'
-            }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 relative z-[100000] max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold text-gray-800">عقد كراء مسكن</h3>
-              <button
-                onClick={() => setShowContractModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-6 text-right" dir="rtl">
-              {/* Contract Title */}
-              <div className="text-center">
-                <h4 className="text-xl font-bold text-gray-900 mb-2">عقد كراء مسكن "{contractData.propertyName}"</h4>
-                <p className="text-gray-600">ما بين الموقعين أسفله:</p>
-              </div>
-
-              {/* First Party - Owner */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الطرف الأول: المرقي العقاري السيد:</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل</label>
-                    <input
-                      type="text"
-                      value={contractData.ownerName}
-                      onChange={(e) => setContractData({...contractData, ownerName: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="أدخل اسم المالك"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الميلاد</label>
-                    <input
-                      type="date"
-                      value={contractData.ownerBirthDate}
-                      onChange={(e) => setContractData({...contractData, ownerBirthDate: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">رقم بطاقة التعريف</label>
-                    <input
-                      type="text"
-                      value={contractData.ownerCinNumber}
-                      onChange={(e) => setContractData({...contractData, ownerCinNumber: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="أدخل رقم البطاقة"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ إصدار البطاقة</label>
-                    <input
-                      type="date"
-                      value={contractData.ownerCinDate}
-                      onChange={(e) => setContractData({...contractData, ownerCinDate: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">مكان الإصدار</label>
-                    <input
-                      type="text"
-                      value={contractData.ownerCinLocation}
-                      onChange={(e) => setContractData({...contractData, ownerCinLocation: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="دائرة/بلدية"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">العنوان</label>
-                    <input
-                      type="text"
-                      value={contractData.ownerAddress}
-                      onChange={(e) => setContractData({...contractData, ownerAddress: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="العنوان الكامل"
-                    />
-                  </div>
-                </div>
-                <p className="mt-3 text-gray-700">من جهة كمالك.</p>
-              </div>
-
-              {/* Second Party - Tenant */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الطرف الثاني: السيد(ة):</h5>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل</label>
-                    <input
-                      type="text"
-                      value={contractData.tenantName}
-                      onChange={(e) => setContractData({...contractData, tenantName: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="أدخل اسم المستأجر"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">مكان الميلاد</label>
-                    <input
-                      type="text"
-                      value={contractData.tenantBirthPlace}
-                      onChange={(e) => setContractData({...contractData, tenantBirthPlace: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="مكان الميلاد"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الميلاد</label>
-                    <input
-                      type="date"
-                      value={contractData.tenantBirthDate}
-                      onChange={(e) => setContractData({...contractData, tenantBirthDate: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">رقم بطاقة التعريف</label>
-                    <input
-                      type="text"
-                      value={contractData.tenantCinNumber}
-                      onChange={(e) => setContractData({...contractData, tenantCinNumber: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="أدخل رقم البطاقة"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الإصدار</label>
-                    <input
-                      type="date"
-                      value={contractData.tenantCinDate}
-                      onChange={(e) => setContractData({...contractData, tenantCinDate: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">مكان الإصدار</label>
-                    <input
-                      type="text"
-                      value={contractData.tenantCinLocation}
-                      onChange={(e) => setContractData({...contractData, tenantCinLocation: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="ولاية"
-                    />
-                  </div>
-                </div>
-                <p className="mt-3 text-gray-700">من جهة أخرى كمستأجر.</p>
-              </div>
-
-              {/* Agreement */}
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3 text-center">وقع الوفاق والتراضي بين الطرفين على ما يلي:</h5>
-              </div>
-
-              {/* Article 1 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 1: تعيين المسكن موضوع الكراء</h5>
-                <p className="text-gray-700 mb-3">تحت جميع الضمانات الفعلية والقانونية، أستأجر بصفتي الطرف الأول بمقتضى هذا العقد للطرف الثاني السكن الإيجاري "{contractData.propertyName}" والكائن بشارع:</p>
-                <input
-                  type="text"
-                  value={contractData.propertyAddress}
-                  onChange={(e) => setContractData({...contractData, propertyAddress: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="أدخل عنوان العقار"
-                />
-              </div>
-
-              {/* Article 2 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 2: المعاينة</h5>
-                <p className="text-gray-700">لقد تم تفحص ومعاينة المسكن الإيجاري من طرف المستأجر قبل المكوث فيه، حيث تأكد من جاهزيته التامة والكاملة بتوفر جميع مستلزمات العيش من كهرباء، غاز، ماء، حنفيات، مصابيح، وهاتف ، كما هو موضح في وثيقة محضر المعاينة.</p>
-              </div>
-
-              {/* Article 3 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 3: مبلغ الضمان</h5>
-                <p className="text-gray-700 mb-3">يجب على المستأجر أن يدفع مسبقاً مبلغاً مالياً كضمان يقدر بـ:</p>
-                <input
-                  type="text"
-                  value={contractData.guaranteeAmount}
-                  onChange={(e) => setContractData({...contractData, guaranteeAmount: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="مبلغ الضمان (دج)"
-                />
-                <p className="text-gray-700 mt-3">ويسترجع عند مغادرته، وهذا مقابل عدم إلحاق أضرار بتجهيزات المبنى ودفع كل المستحقات الشهرية للإيجار.</p>
-              </div>
-
-              {/* Article 4 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 4: الالتزامات وشروط العقد</h5>
-                <ul className="list-disc list-inside text-gray-700 space-y-2">
-                  <li>يستلزم على المستأجر أن يحافظ على المسكن وكذا إرجاعه إلى حالته التي وجد عليها بعد انتهاء مفعول هذا العقد.</li>
-                  <li>يستلزم على المستأجر الحفاظ على نظافة المسكن وعدم طلاء الجدران وترميمه إلا للضرورة القصوى، وهذا باستشارة المالك أولاً قبل البدء في عملية الترميم.</li>
-                  <li>يتعهد المستأجر بالقيام بأشغال الإصلاح التي تقتضيها الضرورة في صيانة المسكن موضوع الكراء دون قيد أو شرط.</li>
-                  <li>يستلزم على المستأجر دفع مستحقات الكهرباء دون تأخير حسب نظام الاستهلاك.</li>
-                  <li>يسلم المستأجر للمالك المفاتيح وذلك بإرجاعهما على حالتهما الطبيعية عند انتهاء العقد.</li>
-                  <li>يجب على المستأجر احترام الجيران وعدم إزعاجهم وأعوان الأمن، وأن يتقيد بالتعليمات الموجهة له الخاصة بالمرآب وساحة لعب الأطفال.</li>
-                  <li>يمنع منعاً باتاً على المستأجر أن يسلم لمستأجر آخر مفاتيح المسكن دون علم المالك بذلك.</li>
-                </ul>
-              </div>
-
-              {/* Article 5 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 5: ثمن الكراء</h5>
-                <p className="text-gray-700 mb-3">اتفق الطرفان على تحديد ثمن كراء المسكن بمبلغ:</p>
-                <input
-                  type="text"
-                  value={contractData.monthlyRent}
-                  onChange={(e) => setContractData({...contractData, monthlyRent: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="السعر الشهري (دج)"
-                />
-                <p className="text-gray-700 mt-3">للشهر الواحد، وتدفع لثلاثة أشهر (الطريقة الثلاثية). وفي حالة عدم احترام المستأجر للشروط المتفق عليها سابقاً أو تأخره عن أداء مستحقات الكراء في أجلها المحدد، فإن للمالك حق توجيه إنذار يمهله فيه 03 أيام قبل أن يمارس إجراءات فسخ هذا العقد بقوة القانون.</p>
-              </div>
-
-              {/* Article 6 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 6: ما يترتب على المستأجر حال خروجه</h5>
-                <p className="text-gray-700">في حالة إرادة المستأجر إخلاء المسكن قبل نهاية العقد أو قبل موعد تجديد الدفع، يجب عليه أن يعلم المالك قبل الإخلاء بـ 15 يوماً (خمسة عشر يوماً)، وإلا ستحتسب مدة فراغ المسكن على عاتق المستأجر.</p>
-              </div>
-
-              {/* Article 7 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h5 className="font-bold text-lg mb-3">الفصل 7: نهاية العقد والأحكام القضائية</h5>
-                <p className="text-gray-700">في حالة الإخلال بأحد الشروط المذكورة أعلاه، يفسخ العقد تلقائياً وتنتهي صلاحيته. وكذا في حالة عدم امتثال أحد الطرفين للشروط المنصوص عليها وتعمد الإخلال بها، يلجأ مباشرة إلى العدالة القضائية لدى محكمة المشرية للفصل الشرعي والقانوني للقضية.</p>
-              </div>
-
-              {/* Contract Location and Date */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-gray-700 mb-3">حرر بـ:</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">مكان تحرير العقد</label>
-                    <input
-                      type="text"
-                      value={contractData.contractLocation}
-                      onChange={(e) => setContractData({...contractData, contractLocation: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="المكان"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ تحرير العقد</label>
-                    <input
-                      type="date"
-                      value={contractData.contractDate}
-                      onChange={(e) => setContractData({...contractData, contractDate: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Signatures */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <div className="grid grid-cols-2 gap-8">
-                  <div className="text-center">
-                    <p className="font-bold mb-4">إمضاء المالك</p>
-                    <div className="border-b-2 border-gray-400 pb-8"></div>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-bold mb-4">إمضاء المستأجر</p>
-                    <div className="border-b-2 border-gray-400 pb-8"></div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex space-x-3 pt-4">
+            {/* Header */}
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-6 border-b border-gray-100 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-2xl font-bold text-white">تأكيد جعل الحجز متاح</h3>
                 <button
-                  type="button"
-                  onClick={() => setShowContractModal(false)}
-                  className="flex-1 px-4   py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => setShowMakeAvailableConfirmModal(false)}
+                  className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <p className="text-yellow-800 text-sm font-medium mb-2">
+                  ⚠️ تنبيه مهم
+                </p>
+                <p className="text-yellow-700 text-sm">
+                  هذا الحجز بعد تأكيده لن يكون نشطًا على هذا العقار. هذا الحجز الذي يبدأ من تاريخ 
+                  <span className="font-bold"> {editingReservation?.startDate ? new Date(editingReservation.startDate).toLocaleDateString('ar-DZ') : ''} </span>
+                  وينتهي في تاريخ 
+                  <span className="font-bold"> {editingReservation?.endDate ? new Date(editingReservation.endDate).toLocaleDateString('ar-DZ') : ''} </span>
+                  الآن أصبح بدون حجز.
+                </p>
+              </div>
+              
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <h4 className="font-semibold text-gray-800 mb-3">تفاصيل الحجز:</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">الحالة:</span>
+                    <span className="font-medium">{editingReservation?.status || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">حالة الدفع:</span>
+                    <span className="font-medium">{editingReservation?.paymentStatus || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">المبلغ المتبقي:</span>
+                    <span className="font-medium">{editingReservation?.remainingAmount || 0} دج</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">المبلغ المدفوع:</span>
+                    <span className="font-medium">{editingReservation?.paidAmount || 0} دج</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">الإجمالي:</span>
+                    <span className="font-medium">{editingReservation?.totalPrice || 0} دج</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">اسم العميل:</span>
+                    <span className="font-medium">{editingReservation?.customerName || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">هاتف العميل:</span>
+                    <span className="font-medium">{editingReservation?.customerPhone || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">الحالة الاجتماعية:</span>
+                    <span className="font-medium">{editingReservation?.isMarried ? 'متزوج' : 'أعزب'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">عدد الأشخاص:</span>
+                    <span className="font-medium">{editingReservation?.numberOfPeople || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">صور الهوية:</span>
+                    <span className="font-medium">{editingReservation?.identityImages?.length || 0} صور</span>
+                  </div>
+                </div>
+                
+                {editingReservation?.notes && editingReservation.notes.length > 0 && (
+                  <div className="mt-3">
+                    <span className="text-gray-600 text-sm">ملاحظات:</span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {editingReservation.notes.map((note: string, index: number) => (
+                        <span key={index} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                          {note}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowMakeAvailableConfirmModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   إلغاء
                 </button>
                 <button
-                  type="button"
-                  onClick={() => {
-                    // Here you can add print functionality or save contract
-                    window.print();
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const response = await fetch(`https://dmtart.pro/mimorent/api/employer/reservations/${editingReservation._id}/make-available`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                        }
+                      });
+
+                      if (response.ok) {
+                        setShowMakeAvailableConfirmModal(false);
+                        setShowReservationModal(false);
+                        setEditingReservation(null);
+                        setReservationError(null);
+                        
+                        // Refresh data
+                        await fetchReservations();
+                        await fetchProperties();
+                        
+                        addToast('تم جعل الحجز متاح بنجاح', 'success');
+                      } else {
+                        const errorData = await response.json();
+                        addToast(errorData.message || 'فشل في جعل الحجز متاح', 'error');
+                      }
+                    } catch (error) {
+                      console.error('Error making reservation available:', error);
+                      addToast('حدث خطأ أثناء جعل الحجز متاح', 'error');
+                    }
                   }}
-                  className="flex-1 px-4  py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
                 >
-                  طباعة العقد
+                  تأكيد وجعل الحجز متاح
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Contract Modal */}
+      <ContractModal 
+        isOpen={showContractModal}
+        onClose={() => setShowContractModal(false)}
+        initialData={contractData}
+      />
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && invoiceData && (
+        <InvoiceModal 
+          isOpen={showInvoiceModal}
+          onClose={() => setShowInvoiceModal(false)}
+          invoiceData={invoiceData}
+        />
       )}
 
       {/* Reservations List Modal */}
@@ -3630,7 +3622,7 @@ export default function EmployerDashboard() {
             <div className="p-6 overflow-y-auto max-h-[60vh]">
               {(() => {
                 // Find the property and use its reservationIds array (same as calendar)
-                const property = properties.find((p: any) => p._id === selectedPropertyForReservationsList);
+                const property = properties.find((p: any) => p && p._id === selectedPropertyForReservationsList);
                 const propertyReservations = property?.reservationIds || [];
 
                 if (propertyReservations.length === 0) {
@@ -3698,7 +3690,7 @@ export default function EmployerDashboard() {
                           <div className="flex flex-col gap-2 ml-4">
                             <button
                               onClick={() => {
-                                const property = properties.find((p: any) => p._id === selectedPropertyForReservationsList);
+                                const property = properties.find((p: any) => p && p._id === selectedPropertyForReservationsList);
                                 if (property) {
                                   setSelectedProperty(property);
                                   setEditingReservation(reservation);

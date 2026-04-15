@@ -5,20 +5,6 @@
   --foreground: #171717;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 /* Toast animations */
 @keyframes slide-in-from-right {
   from {
@@ -45,6 +31,68 @@
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-20px); }
 }
+
+/* Fix placeholder text color consistency across browsers */
+::placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+}
+
+::-webkit-input-placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+}
+
+::-moz-placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+:-ms-input-placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+/* Samsung Internet and mobile browsers */
+input::placeholder, textarea::placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #6b7280 !important;
+}
+
+/* Force dark color for all inputs */
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="password"]::placeholder,
+input[type="tel"]::placeholder,
+input[type="url"]::placeholder,
+textarea::placeholder {
+  color: #374151 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #374151 !important;
+  text-shadow: 0 0 0 #374151 !important;
+}
+
+/* Override any system color scheme */
+input::placeholder, textarea::placeholder, select::placeholder {
+  color: #374151 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #374151 !important;
+  text-shadow: 0 0 0 #374151 !important;
+}
+
+/* Force dark color for all form elements */
+input, textarea, select {
+  color: #111827 !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #374151 !important;
+  opacity: 1 !important;
+}
+
 
 /* Hero animations */
 @keyframes moveHorizontal {

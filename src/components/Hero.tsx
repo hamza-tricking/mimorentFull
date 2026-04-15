@@ -555,10 +555,7 @@ export default function Hero() {
                 </div>
               {/* Left Part - 49% */}
               <div className="relative w-[49%] h-full overflow-hidden shadow-2xl rounded-lg">
-                {/* Phone Number */}
-                <div className="absolute top-2 right-2 z-20 bg-[#24697F] backdrop-blur-md px-3 py-2 md:px-4 md:py-3 shadow-xl rounded-lg">
-                  <span className="text-white font-bold text-sm md:text-md group-hover:text-gray-200 transition-colors duration-300">{t('hero.phoneNumber')}: +213 550307907</span>
-                </div>
+              
                 
                 <div className="absolute inset-0">
                   <Image

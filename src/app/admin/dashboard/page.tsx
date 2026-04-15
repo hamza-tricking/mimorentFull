@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../../contexts/ToastContext';
 import ContractModal from '../../../components/admin/ContractModal';
+import InvoiceModal from '../../../components/admin/InvoiceModal';
 import Notifications from '../../../components/admin/Notifications';
 import NotificationDropdown from '../../../components/admin/NotificationDropdown';
 import LoadingSpinner from '../../../components/LoadingSpinner';
@@ -40,7 +42,11 @@ import {
   History,
   ChevronDown,
   PieChart,
-  RefreshCw
+  RefreshCw,
+  Power,
+  Database,
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -69,6 +75,21 @@ ChartJS.register(
   Legend,
   Filler
 );
+
+// Arabic date formatting utility
+const formatArabicDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  
+  const arabicMonths = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+  ];
+  
+  return `${day} ${arabicMonths[month]} ${year}`;
+};
 
 // Date formatting utility
 const formatDate = (dateString: string) => {
@@ -148,6 +169,20 @@ export default function Dashboard() {
   const [isAddingReservation, setIsAddingReservation] = useState(false);
   const [isEditingReservation, setIsEditingReservation] = useState(false);
   
+  // Backup states
+  const [backups, setBackups] = useState<any[]>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [showBackupDetailsModal, setShowBackupDetailsModal] = useState(false);
+  const [selectedBackupDetails, setSelectedBackupDetails] = useState<any>(null);
+  const [showRestoreConfirmation, setShowRestoreConfirmation] = useState(false);
+  const [pendingRestoreBackup, setPendingRestoreBackup] = useState<any>(null);
+  const [showAllProperties, setShowAllProperties] = useState(false);
+  const [showAllReservations, setShowAllReservations] = useState(false);
+  const [showAllUsers, setShowAllUsers] = useState(false);
+  const [showAllOffices, setShowAllOffices] = useState(false);
+  const [showAllWilayas, setShowAllWilayas] = useState(false);
+  
   // Property modals state
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
   const [showEditPropertyModal, setShowEditPropertyModal] = useState(false);
@@ -201,14 +236,14 @@ export default function Dashboard() {
     const monthly = parseFloat(monthlyPrice);
     if (isNaN(monthly) || monthly <= 0) return '';
     const daily = monthly / 30;
-    return Math.round(daily).toString();
+    return daily.toFixed(2);
   };
   
   const calculateMonthlyFromDailyRounded = (dailyPrice: string): string => {
     const daily = parseFloat(dailyPrice);
     if (isNaN(daily) || daily <= 0) return '';
     const monthly = daily * 30;
-    return Math.round(monthly).toString();
+    return monthly.toFixed(2);
   };
   
   const handleAddReservationTypeChange = (type: string) => {
@@ -268,7 +303,7 @@ export default function Dashboard() {
 
   // Validation function for monthly reservation dates
   const validateMonthlyReservation = (startDate: Date, endDate: Date, propertyId: string): { isValid: boolean; message?: string } => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     
     // If property is daily, no monthly validation needed
     if (!property || property.reserveTheProperty !== 'monthly') {
@@ -366,7 +401,7 @@ export default function Dashboard() {
 
   // Function to calculate total price based on property price and reservation dates
   const calculateReservationPrice = (startDate: string, endDate: string, propertyId: string): number => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     if (!property) return 0;
     
     const start = new Date(startDate);
@@ -417,6 +452,7 @@ export default function Dashboard() {
   const [selectedPropertyForReservation, setSelectedPropertyForReservation] = useState<string>('');
   const [editingReservation, setEditingReservation] = useState<any>(null);
   const [showEditReservationModal, setShowEditReservationModal] = useState(false);
+  const [showMakeAvailableConfirmModal, setShowMakeAvailableConfirmModal] = useState(false);
   const [showReservationsListModal, setShowReservationsListModal] = useState(false);
   const [selectedPropertyForReservationsList, setSelectedPropertyForReservationsList] = useState<string>('');
   const [selectedReservationId, setSelectedReservationId] = useState<string>('');
@@ -499,6 +535,8 @@ export default function Dashboard() {
   const [selectedWilayaForStats, setSelectedWilayaForStats] = useState<string>('');
   const [selectedOfficeForStats, setSelectedOfficeForStats] = useState<string>('');
   const [selectedEmployerForStats, setSelectedEmployerForStats] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   // Advanced filters for reservations
   const [reservationCapacity, setReservationCapacity] = useState<string>('');
@@ -531,10 +569,16 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Helper function to check if user is admin (not sousAdmin)
+  const isAdmin = () => {
+    const result = adminUser?.role === 'admin';
+    return result;
+  };
+
   // Debug edit reservation modal
   useEffect(() => {
     if (showEditReservationModal && editingReservation) {
-      const foundProperty = properties.find((p: any) => p._id === editingReservation?.propertyId);
+      const foundProperty = properties.find((p: any) => p && p._id === editingReservation?.propertyId);
       console.log('Edit modal opened with property:', foundProperty);
     }
   }, [showEditReservationModal, editingReservation, properties]);
@@ -545,9 +589,9 @@ export default function Dashboard() {
       // Handle different property ID structures
       const propertyId = typeof editingReservation?.propertyId === 'string' 
         ? editingReservation?.propertyId 
-        : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+        : (editingReservation?.propertyId && editingReservation?.propertyId?._id) || (editingReservation?.propertyId && editingReservation?.propertyId?.id);
       
-      const property = properties.find((p: any) => p._id === propertyId);
+      const property = properties.find((p: any) => p && p._id === propertyId);
       const isFamilyProperty = property?.targetAudience === 'family';
       
       if (isFamilyProperty) {
@@ -571,9 +615,9 @@ return true;
     // Get property info for this reservation
     const propertyId = typeof reservation.propertyId === 'string' 
       ? reservation.propertyId 
-      : reservation.propertyId?._id || reservation.propertyId.id;
+      : (reservation.propertyId && reservation.propertyId?._id) || (reservation.propertyId && reservation.propertyId?.id);
     
-        const property = properties.find((p: any) => p._id === propertyId);
+        const property = properties.find((p: any) => p && p._id === propertyId);
         
     if (!property) {
       return false;
@@ -608,7 +652,7 @@ return true;
   // Additional debugging: Check if any reservation properties match available properties
   const reservationPropertyIds = reservations.filter(r => r).map(r => 
     r.propertyId ? 
-      (typeof r.propertyId === 'string' ? r.propertyId : r.propertyId?._id || r.propertyId.id) 
+      (typeof r.propertyId === 'string' ? r.propertyId : r.propertyId?._id || r.propertyId?.id) 
       : null
   ).filter(id => id !== null);
   const availablePropertyIds = properties.filter(p => p && p._id).map(p => p._id);
@@ -634,9 +678,20 @@ return true;
     name: string | null;
   }>({ type: null, id: null, name: null });
 
+  // Toggle confirmation modal state
+  const [toggleConfirmation, setToggleConfirmation] = useState<{
+    userId: string | null;
+    userName: string | null;
+    currentStatus: boolean | null;
+  }>({ userId: null, userName: null, currentStatus: null });
+
   
   // Contract modal state
   const [showContractModal, setShowContractModal] = useState(false);
+
+  // Invoice modal state
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceData, setInvoiceData] = useState<any>(null);
 
   // User details modal state
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -656,7 +711,7 @@ return true;
 
       try {
         const user = JSON.parse(userData);
-        if (user.role !== 'admin' && user.role !== 'sous admin') {
+        if (user.role !== 'admin' && user.role !== 'sousAdmin') {
           router.push('/login');
           return;
         }
@@ -817,6 +872,7 @@ return true;
     { id: 'orders', label: 'طلبات الحجز', icon: FileText, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
     { id: 'financial', label: 'الإحصائيات المالية', icon: PieChart, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
     { id: 'history', label: 'السجل', icon: Clock, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
+    { id: 'backup', label: 'نسخ احتياطية', icon: Database, onClick: () => { setSelectedWilaya(null); setSelectedOffice(null); } },
   ];
 
   // Helper function for delayed API calls
@@ -1013,7 +1069,7 @@ return true;
           const data = await response.json();
           if (data.success && data.data.properties) {
             // Compare with current properties and update if changed
-            const currentPropertiesMap = new Map(properties.map(p => [p._id, p]));
+            const currentPropertiesMap = new Map(properties.filter(p => p != null).map(p => [p._id, p]));
             const hasChanges = data.data.properties.some((newProperty: any) => {
               const currentProperty = currentPropertiesMap.get(newProperty._id);
               return !currentProperty || 
@@ -1079,7 +1135,7 @@ return true;
         
         if (data.errors && Array.isArray(data.errors)) {
           // Validation errors array
-          errorMessage = data.errors.map((err: any) => err.msg || err.message).join(', ');
+          errorMessage = data.errors.filter((err: any) => err != null).map((err: any) => err.msg || err.message).join(', ');
         } else if (data.message) {
           errorMessage = data.message;
         } else if (data.error) {
@@ -1123,7 +1179,7 @@ return true;
       const data = await response.json();
       
       if (data.success) {
-        setProperties(properties.map(p => p._id === editingProperty._id ? data.data.property : p));
+        setProperties(properties.filter(p => p != null).map(p => p._id === editingProperty._id ? data.data.property : p));
         setShowEditPropertyModal(false);
         setEditingProperty(null);
         setImageLinks([]);
@@ -1139,7 +1195,7 @@ return true;
         
         if (data.errors && Array.isArray(data.errors)) {
           // Validation errors array
-          errorMessage = data.errors.map((err: any) => err.msg || err.message).join(', ');
+          errorMessage = data.errors.filter((err: any) => err != null).map((err: any) => err.msg || err.message).join(', ');
         } else if (data.message) {
           errorMessage = data.message;
         } else if (data.error) {
@@ -1345,8 +1401,8 @@ setOrders(orders);
             // Find the full property object
             const propertyId = typeof order.propertyId === 'string' 
               ? order.propertyId 
-              : order.propertyId?._id || order.propertyId.id;
-            const property = properties.find(p => p._id === propertyId);
+              : (order.propertyId && order.propertyId?._id) || (order.propertyId && order.propertyId?.id);
+            const property = properties.find(p => p && p._id === propertyId);
             if (property) {
               // Pre-fill the reservation form with order data
               const isFamilyProperty = property?.targetAudience === 'family';
@@ -1422,19 +1478,19 @@ setOrders(orders);
 
   // Handler functions for order actions
   const handleApproveOrder = (orderId: string) => {
-    setSelectedOrder(orders.find(o => o._id === orderId));
+    setSelectedOrder(orders.find(o => o && o._id === orderId));
     setOrderAction('approve');
     setShowOrderActionModal(true);
   };
 
   const handleRejectOrder = (orderId: string) => {
-    setSelectedOrder(orders.find(o => o._id === orderId));
+    setSelectedOrder(orders.find(o => o && o._id === orderId));
     setOrderAction('reject');
     setShowOrderActionModal(true);
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    setSelectedOrder(orders.find(o => o._id === orderId));
+    setSelectedOrder(orders.find(o => o && o._id === orderId));
     setOrderAction('delete');
     setShowOrderActionModal(true);
   };
@@ -1517,7 +1573,7 @@ setOrders(orders);
       if (data.success) {
         addToast('تم تحديث الطلب بنجاح', 'success');
         // Update the order in the local state
-        setOrders(orders.map(order => 
+        setOrders(orders.filter(order => order != null).map(order => 
           order._id === orderId 
 ? { ...order, priority: editPriority, adminNotes: editAdminNotes }
 : order
@@ -1676,7 +1732,7 @@ setOrders(orders);
         const reservation = reservations.find((r: any) => {
           const reservationPropertyId = typeof r.propertyId === 'string' 
             ? r.propertyId 
-            : r.propertyId?._id || r.propertyId.id;
+            : (r.propertyId && r.propertyId?._id) || (r.propertyId && r.propertyId?.id);
           return r._id === reservationInfo.reservationId;
         });
         
@@ -1703,17 +1759,25 @@ setOrders(orders);
           setSelectedEndDate(end);
           setIsSelecting(false);
           
-          // Open add reservation modal with selected dates
-          setSelectedPropertyForReservation(propertyId);
-          setPreSelectedDates({ startDate: start, endDate: end });
-          setShowAddReservationModal(true);
-          
-          // Reset selection after opening modal
-          setTimeout(() => {
+          // Open add reservation modal with selected dates (only for admin users)
+          if (isAdmin()) {
+            setSelectedPropertyForReservation(propertyId);
+            setPreSelectedDates({ startDate: start, endDate: end });
+            setShowAddReservationModal(true);
+            
+            // Reset selection after opening modal
+            setTimeout(() => {
+              setSelectedStartDate(null);
+              setSelectedEndDate(null);
+              setHoveredDate(null);
+            }, 100);
+          } else {
+            // For sousadmin users, just reset selection without opening modal
             setSelectedStartDate(null);
             setSelectedEndDate(null);
+            setIsSelecting(false);
             setHoveredDate(null);
-          }, 100);
+          }
         }
       }
     };
@@ -1747,7 +1811,7 @@ setOrders(orders);
     const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
     
     // Get the property and its reservations
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     const propertyReservations = property?.reservationIds || [];
     
     // Color palette for different reservations
@@ -1902,7 +1966,7 @@ setOrders(orders);
                   className={`p-1.5 sm:p-2 ${colors.light} rounded border ${colors.lightBorder} cursor-pointer hover:opacity-80 transition-opacity`}
                   onClick={() => {
                     setSelectedPropertyForReservation(propertyId);
-                    const fullReservation = reservations.find((r: any) => r._id === reservation._id);
+                    const fullReservation = reservations.find((r: any) => r && r._id === reservation._id);
                     if (fullReservation) {
                       openEditReservationModal(fullReservation);
                     }
@@ -1945,6 +2009,8 @@ setOrders(orders);
       if (selectedWilayaForStats) params.append('wilayaId', selectedWilayaForStats);
       if (selectedOfficeForStats) params.append('officeId', selectedOfficeForStats);
       if (selectedEmployerForStats) params.append('employerId', selectedEmployerForStats);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
       
       const response = await fetch(`https://dmtart.pro/mimorent/api/admin/financial-stats?${params.toString()}`, {
         headers: {
@@ -2017,7 +2083,7 @@ if (financialResponse.ok) {
     
     // Merge the data: include all wilayas, even those with 0 reservations
     const mergedWilayaData = allWilayas.map((wilaya: any) => {
-      const financialInfo = financialWilayas.find((fw: any) => fw._id === wilaya._id);
+      const financialInfo = financialWilayas.find((fw: any) => fw && fw._id === wilaya._id);
       return {
         _id: wilaya._id,
         wilayaName: wilaya.name,
@@ -2074,7 +2140,7 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
   const fetchProperties = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('https://dmtart.pro/mimorent/api/admin/properties', {
+      const response = await fetch('https://dmtart.pro/mimorent/api/admin/properties?limit=1000', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -2084,12 +2150,197 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
       const data = await response.json();
       
       if (data.success) {
+        console.log('Admin Dashboard - Property Data with Reservations:', data.data.properties);
+        console.log('Total properties fetched:', data.data.properties.length);
         setProperties(data.data.properties || []);
       }
     } catch (error) {
       console.error('Failed to fetch properties:', error);
     }
   };
+
+  // Backup functions
+  const fetchBackups = async () => {
+    try {
+      setBackupLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('https://dmtart.pro/mimorent/api/admin/backups', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setBackups(data.data.backups || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch backups:', error);
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const handleCreateBackup = async () => {
+    try {
+      setIsCreatingBackup(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('https://dmtart.pro/mimorent/api/admin/backups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          description: `Manual backup created on ${new Date().toLocaleString()}`
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        addToast('Backup created successfully', 'success');
+        fetchBackups(); // Refresh backups list
+      } else {
+        addToast('Failed to create backup', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to create backup:', error);
+      addToast('Failed to create backup', 'error');
+    } finally {
+      setIsCreatingBackup(false);
+    }
+  };
+
+  const handleViewBackup = async (backupId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/backups/${backupId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSelectedBackupDetails(data.data.backup);
+        setShowBackupDetailsModal(true);
+        // Reset show all states
+        setShowAllProperties(false);
+        setShowAllReservations(false);
+        setShowAllUsers(false);
+        setShowAllOffices(false);
+        setShowAllWilayas(false);
+      } else {
+        addToast('Failed to load backup details', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to view backup:', error);
+      addToast('Failed to load backup details', 'error');
+    }
+  };
+
+  const handleDeleteBackup = async (backupId: string) => {
+    if (!confirm('Are you sure you want to delete this backup? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/backups/${backupId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        addToast('Backup deleted successfully', 'success');
+        fetchBackups(); // Refresh backups list
+      } else {
+        addToast('Failed to delete backup', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to delete backup:', error);
+      addToast('Failed to delete backup', 'error');
+    }
+  };
+
+  const handleRestoreBackup = async (backupId: string) => {
+    // Find the backup details
+    const backup = backups.find(b => b._id === backupId) || selectedBackupDetails;
+    if (!backup) {
+      addToast('Backup not found', 'error');
+      return;
+    }
+    
+    setPendingRestoreBackup(backup);
+    setShowRestoreConfirmation(true);
+  };
+
+  const executeRestoreBackup = async () => {
+    if (!pendingRestoreBackup) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/backups/${pendingRestoreBackup._id}/restore`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          confirm: 'RESTORE_CONFIRMED'
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        addToast('تم استعادة البيانات بنجاح. جاري إعادة تحميل الصفحة...', 'success');
+        // Close all modals
+        setShowRestoreConfirmation(false);
+        setShowBackupDetailsModal(false);
+        setSelectedBackupDetails(null);
+        setPendingRestoreBackup(null);
+        
+        // Refresh all data
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        addToast('فشل استعادة النسخة الاحتياطية', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to restore backup:', error);
+      addToast('فشل استعادة النسخة الاحتياطية', 'error');
+    }
+  };
+
+  // Fetch backups when backup tab is active
+  useEffect(() => {
+    if (activeTab === 'backup') {
+      fetchBackups();
+    }
+  }, [activeTab]);
+
+  // Body scroll lock for backup details modal
+  useEffect(() => {
+    if (showBackupDetailsModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showBackupDetailsModal]);
 
   const handleAddReservation = async (reservationData: {
     customerName: string;
@@ -2121,13 +2372,11 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
       const token = localStorage.getItem('token');
       
       // Optimistic update - update property immediately
-      setProperties(prevProperties => 
-        prevProperties.map(property => 
-          property._id === reservationData.propertyId 
+      setProperties(prevProperties => prevProperties.filter(property => property != null).map(property => 
+        property._id === reservationData.propertyId 
 ? { ...property,  isReserved: true }
 : property
-        )
-      );
+      ));
       
       console.log('🔍 Admin reservation data being sent:', reservationData);
       console.log('🔍 Reservation data size:', JSON.stringify(reservationData).length, 'characters');
@@ -2152,7 +2401,7 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
         setReservations([...reservations, data.data.reservation]);
         
         // Update properties to refresh calendar
-        setProperties(prev => prev.map(property => {
+        setProperties(prev => prev.filter(property => property != null).map(property => {
           if (property._id === selectedPropertyForReservation) {
             // Update the reservation in the property's reservationIds array
             return {
@@ -2195,7 +2444,7 @@ console.error('🔴 Wilayas API error:', wilayasData.message);
         
         // Handle array of validation errors
         if (data.errors && Array.isArray(data.errors)) {
-          const errorDetails = data.errors.map((err: any) => {
+          const errorDetails = data.errors.filter((err: any) => err != null).map((err: any) => {
 if (err.msg && err.path) {
   return `${err.path}: ${err.msg}`;
 }
@@ -2274,15 +2523,15 @@ return err.msg || JSON.stringify(err);
       const data = await response.json();
       
       if (data.success) {
-        setReservations(reservations.map(r => r._id === editingReservation._id ? data.data.reservation : r));
+        setReservations(reservations.filter(r => r != null).map(r => r._id === editingReservation._id ? data.data.reservation : r));
         
         // Update properties to refresh calendar with new reservation data
-        setProperties(prev => prev.map(property => {
+        setProperties(prev => prev.filter(property => property != null).map(property => {
           if (property._id === editingReservation.propertyId) {
             // Update the reservation in the property's reservationIds array
             return {
               ...property,
-              reservationIds: property.reservationIds?.map((resId: any) => 
+              reservationIds: property.reservationIds?.filter((resId: any) => resId != null).map((resId: any) => 
                 resId._id === editingReservation._id ? data.data.reservation : resId
               ) || []
             };
@@ -2304,6 +2553,57 @@ return err.msg || JSON.stringify(err);
       addToast('خطأ في الشبكة. يرجى التحقق من اتصالك.', 'error');
     } finally {
       setIsEditingReservation(false);
+    }
+  };
+
+  const handleMakeReservationAvailable = async () => {
+    if (!editingReservation?._id) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/reservations/${editingReservation._id}/make-available`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update reservation status to cancelled
+        setReservations(reservations.filter(r => r != null).map(r => 
+          r._id === editingReservation._id 
+            ? { ...r, status: 'cancelled' } 
+            : r
+        ));
+        
+        // Remove reservation from property's reservationIds array
+        setProperties(prev => prev.filter(property => property != null).map(property => {
+          if (property._id === editingReservation.propertyId || 
+              property._id === editingReservation.propertyId?._id || 
+              property._id === editingReservation.propertyId?.id) {
+            return {
+              ...property,
+              reservationIds: property.reservationIds?.filter((resId: any) => 
+                resId._id !== editingReservation._id && resId !== editingReservation._id
+              ) || []
+            };
+          }
+          return property;
+        }));
+        
+        setShowMakeAvailableConfirmModal(false);
+        setShowEditReservationModal(false);
+        setEditingReservation(null);
+        addToast('تم جعل الحجز متاح بنجاح', 'success');
+      } else {
+        addToast(data.message || 'فشل في جعل الحجز متاح', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to make reservation available:', error);
+      addToast('خطأ في الشبكة. يرجى التحقق من اتصالك.', 'error');
     }
   };
 
@@ -2375,7 +2675,7 @@ return err.msg || JSON.stringify(err);
         const propertyReservations = reservations.filter((r: any) => {
           const reservationPropertyId = typeof r.propertyId === 'string' 
             ? r.propertyId 
-            : r.propertyId?._id || r.propertyId.id;
+            : (r.propertyId && r.propertyId?._id) || (r.propertyId && r.propertyId?.id);
           return reservationPropertyId === propertyId;
         });
 
@@ -2482,7 +2782,7 @@ return err.msg || JSON.stringify(err);
     return reservations.some((reservation: any) => {
       const reservationPropertyId = typeof reservation.propertyId === 'string' 
         ? reservation.propertyId 
-        : reservation.propertyId?._id || reservation.propertyId.id;
+        : (reservation.propertyId && reservation.propertyId?._id) || (reservation.propertyId && reservation.propertyId?.id);
       return reservationPropertyId === propertyId && 
  ['pending', 'confirmed', 'approved'].includes(reservation.status);
     });
@@ -2504,14 +2804,34 @@ return err.msg || JSON.stringify(err);
     setEditOfficeId(officeId);
     setEditPropertyAvailable(property.available !== false);
     setEditMapUrl(property.locationGoogleMapLink || '');
+    setEditReservationType(property.reserveTheProperty || 'daily');
     
     setShowEditPropertyModal(true);
+  };
+
+  // Function to convert Google Drive sharing URL to direct image URL
+  const convertGoogleDriveUrl = (url: string) => {
+    // Check if it's a Google Drive sharing URL (handle any query parameters)
+    const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveMatch) {
+      const fileId = driveMatch[1];
+      // Check if running on localhost
+      if (window.location.hostname === 'localhost') {
+        // For localhost, return a placeholder or alternative
+        console.log('Google Drive images may not work on localhost. Use Imgur or PostImage for development.');
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000-h1000`;
+      }
+      // Use the most reliable format for Google Drive images (works in production)
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000-h1000`;
+    }
+    return url; // Return original URL if not a Google Drive URL
   };
 
   // Image link management functions
   const addImageLink = () => {
     if (currentImageLink.trim() && !imageLinks.includes(currentImageLink.trim())) {
-      setImageLinks([...imageLinks, currentImageLink.trim()]);
+      const convertedUrl = convertGoogleDriveUrl(currentImageLink.trim());
+      setImageLinks([...imageLinks, convertedUrl]);
       setCurrentImageLink(''); // Clear input field after adding
     }
   };
@@ -2529,7 +2849,7 @@ return err.msg || JSON.stringify(err);
 
   // Image navigation functions
   const nextImage = (propertyId: string) => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     if (property && property.images && property.images.length > 1) {
       const currentIndex = currentImageIndex[propertyId] || 0;
       const nextIndex = (currentIndex + 1) % property.images.length;
@@ -2538,7 +2858,7 @@ return err.msg || JSON.stringify(err);
   };
 
   const prevImage = (propertyId: string) => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     if (property && property.images && property.images.length > 1) {
       const currentIndex = currentImageIndex[propertyId] || 0;
       const prevIndex = currentIndex === 0 ? property.images.length - 1 : currentIndex - 1;
@@ -2547,7 +2867,7 @@ return err.msg || JSON.stringify(err);
   };
 
   const getCurrentImage = (propertyId: string) => {
-    const property = properties.find((p: any) => p._id === propertyId);
+    const property = properties.find((p: any) => p && p._id === propertyId);
     if (property && property.images && property.images.length > 0) {
       const currentIndex = currentImageIndex[propertyId] || 0;
       return property.images[currentIndex] || property.images[0];
@@ -2600,6 +2920,12 @@ return err.msg || JSON.stringify(err);
       // Clear previous errors
       setWilayaError(null);
       
+      // Convert Google Drive URL if present
+      const processedWilayaData = {
+        ...wilayaData,
+        image: wilayaData.image ? convertGoogleDriveUrl(wilayaData.image) : undefined
+      };
+      
       const token = localStorage.getItem('token');
       
       const response = await fetch('https://dmtart.pro/mimorent/api/admin/wilayas', {
@@ -2608,7 +2934,7 @@ return err.msg || JSON.stringify(err);
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(wilayaData)
+        body: JSON.stringify(processedWilayaData)
       });
 
       
@@ -2751,6 +3077,12 @@ return err.msg || JSON.stringify(err);
       setIsAddingUser(true);
       
       // Clear previous errors
+      
+      // Convert Google Drive URL if present
+      const processedUserData = {
+        ...userData,
+        image: userData.image ? convertGoogleDriveUrl(userData.image) : ''
+      };
       setUserError(null);
       console.log(userData)
       const response = await fetch('https://dmtart.pro/mimorent/api/admin/users', {
@@ -2759,7 +3091,7 @@ return err.msg || JSON.stringify(err);
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(userData)
+        body: JSON.stringify(processedUserData)
       });
 
       if (response.ok) {
@@ -2812,6 +3144,7 @@ return err.msg || JSON.stringify(err);
     officeId: string;
     image: string;
     address: string;
+    password?: string;
   }) => {
     try {
       setIsEditingUser(true);
@@ -2819,13 +3152,19 @@ return err.msg || JSON.stringify(err);
       // Clear previous errors
       setUserError(null);
       
+      // Convert Google Drive URL if present
+      const processedUserData = {
+        ...userData,
+        image: userData.image ? convertGoogleDriveUrl(userData.image) : ''
+      };
+      
       const response = await fetch(`https://dmtart.pro/mimorent/api/admin/users/${selectedUser._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(userData)
+        body: JSON.stringify(processedUserData)
       });
 
       if (response.ok) {
@@ -2875,20 +3214,26 @@ return err.msg || JSON.stringify(err);
   const handleEditWilaya = async (wilayaData: { name: string; image?: string }) => {
     try {
       
+      // Convert Google Drive URL if present
+      const processedWilayaData = {
+        ...wilayaData,
+        image: wilayaData.image ? convertGoogleDriveUrl(wilayaData.image) : undefined
+      };
+      
       const response = await fetch(`https://dmtart.pro/mimorent/api/admin/wilayas/${editingWilaya._id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(wilayaData)
+        body: JSON.stringify(processedWilayaData)
       });
       
       
       const data = await response.json();
       
       if (data.success) {
-        setWilayas(wilayas.map(w => w._id === editingWilaya._id ? data.data.wilaya : w));
+        setWilayas(wilayas.filter(w => w != null).map(w => w._id === editingWilaya._id ? data.data.wilaya : w));
         setShowEditModal(false);
         setEditingWilaya(null);
       }
@@ -2912,7 +3257,7 @@ return err.msg || JSON.stringify(err);
       const data = await response.json();
       
       if (data.success) {
-        setOffices(offices.map(o => o._id === editingOffice._id ? data.data.office : o));
+        setOffices(offices.filter(o => o != null).map(o => o._id === editingOffice._id ? data.data.office : o));
         setShowEditOfficeModal(false);
         setEditingOffice(null);
         addToast('تم تحديث المكتب بنجاح', 'success');
@@ -2947,7 +3292,7 @@ return err.msg || JSON.stringify(err);
   };
 
   const handleDeleteWilayaConfirmation = (wilayaId: string) => {
-    const wilaya = wilayas.find(w => w._id === wilayaId);
+    const wilaya = wilayas.find(w => w && w._id === wilayaId);
     setDeleteConfirmation({
       type: 'wilaya',
       id: wilayaId,
@@ -2977,7 +3322,7 @@ return err.msg || JSON.stringify(err);
   };
 
   const handleDeleteOfficeConfirmation = (officeId: string) => {
-    const office = offices.find(o => o._id === officeId);
+    const office = offices.find(o => o && o._id === officeId);
     setDeleteConfirmation({
       type: 'office',
       id: officeId,
@@ -3008,12 +3353,72 @@ return err.msg || JSON.stringify(err);
   };
 
   const handleDeleteUserConfirmation = (userId: string) => {
-    const user = users.find(u => u._id === userId);
+    const user = users.find(u => u && u._id === userId);
     setDeleteConfirmation({
       type: 'user',
       id: userId,
       name: user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.username || 'Unknown User'
     });
+  };
+
+  const handleToggleUserConfirmation = (userId: string) => {
+    const user = users.find(u => u && u._id === userId);
+    // Don't default to true, use the actual value or false if undefined
+    const isActive = user?.isActive !== undefined ? user.isActive : false;
+    setToggleConfirmation({
+      userId,
+      userName: user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.username || 'Unknown User',
+      currentStatus: isActive
+    });
+  };
+
+  const handleToggleUserStatus = async (userId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Get current user status before API call
+      const currentUser = users.find(u => u && u._id === userId);
+      // Don't default to true, use the actual value or false if undefined
+      const currentStatus = currentUser?.isActive !== undefined ? currentUser.isActive : false;
+      const newStatus = !currentStatus;
+      
+      const response = await fetch(`https://dmtart.pro/mimorent/api/admin/users/${userId}/toggle-status`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        // Update user in state with proper null checks
+        setUsers(prevUsers => prevUsers.map(user => {
+          if (!user || user._id !== userId) return user;
+          return { ...user, isActive: newStatus };
+        }));
+        
+        // Also update selectedUser if this user is currently being viewed
+        setSelectedUser((prevSelected: any) => {
+          if (prevSelected && prevSelected._id === userId) {
+            return { ...prevSelected, isActive: newStatus };
+          }
+          return prevSelected;
+        });
+        
+        // Show correct toast message based on the new status
+        addToast(
+          newStatus 
+            ? 'تم تفعيل المستخدم بنجاح' 
+            : 'تم تعطيل المستخدم بنجاح', 
+          'success'
+        );
+      } else {
+        addToast(data.message || 'فشل في تحديث حالة المستخدم', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to toggle user status:', error);
+      addToast('خطأ في الشبكة. يرجى التحقق من اتصالك.', 'error');
+    }
   };
 
   const openEditModal = (office: any) => {
@@ -3042,7 +3447,7 @@ return err.msg || JSON.stringify(err);
   // Filter users based on selected wilaya
   const filteredUsers = selectedWilaya 
     ? users.filter((user: any) => {
-        const userOffice = offices.find((office: any) => office._id === user.officeId);
+        const userOffice = offices.find((office: any) => office && office._id === user.officeId);
         return userOffice?.wilayaId?._id === selectedWilaya;
       })
     : users;
@@ -3105,7 +3510,7 @@ radial-gradient(circle at 40% 20%, rgba(255, 255, 255, 0.35) 0%, transparent 50%
       <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center border border-white/15">
         <UserCheck className="w-5 h-5 text-white" />
       </div>
-      <span className="text-white font-medium hidden sm:block mx-2 text-sm">{t('admin.adminUser')}</span>
+      <span className="text-white font-medium hidden sm:block mx-2 text-sm">المستخدم المدير</span>
     </button>
   </div>
 </div>
@@ -3133,7 +3538,7 @@ onClick={() => setSidebarOpen(false)}
         setActiveTab(item.id);
         setSidebarOpen(false);
       }}
-      className={`w-full  flex  items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300 ${
+      className={`w-full  flex  items-center space-x-3 px-2 py-2 rounded-xl transition-all duration-300 ${
         activeTab === item.id
           ? 'bg-gradient-to-r from-white/20 to-white/12 text-white border-l-4 border-white shadow-md shadow-white/10'
           : 'text-white/80 hover:bg-white/12 hover:text-white'
@@ -3150,7 +3555,7 @@ onClick={() => setSidebarOpen(false)}
     className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-white/80 hover:bg-red-500/15 hover:text-red-200 transition-all duration-300"
   >
     <LogOut className="w-5 h-5" />
-    <span className="font-medium mx-2">{t('admin.logout')}</span>
+    <span className="font-medium mx-2">تسجيل الخروج</span>
   </button>
 </div>
           </nav>
@@ -3175,19 +3580,23 @@ onClick={() => setSidebarOpen(false)}
         onClick={openAddModal}
         className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-lg px-6 py-3 text-white font-medium transition-all hover:scale-105"
       >
-        {t('admin.addWilaya')}
+        إضافة ولاية
       </button>
     </div>
   ) : (
     <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-white">جميع الولايات</h2>
-        <button
-          onClick={openAddModal}
-          className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-lg px-4 py-2 text-white text-sm font-medium transition-all hover:scale-105"
-        >
-          إضافة ولاية جديدة
-        </button>
+        {isAdmin() && (
+          <button
+            onClick={() => {
+              openAddModal();
+            }}
+            className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-lg px-4 py-2 text-white text-sm font-medium transition-all hover:scale-105"
+          >
+            إضافة مكتب جديد
+          </button>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-white">
@@ -3217,18 +3626,26 @@ onClick={() => setSidebarOpen(false)}
     <td className="py-3 px-4">{wilaya.name}</td>
     <td className="py-3 px-4">
       <div className="flex space-x-2">
-        <button 
-          onClick={() => openEditWilayaModal(wilaya)}
-          className="text-white/60 hover:text-white transition-colors"
-        >
-          <Edit className="w-4 h-4" />
-        </button>
-        <button 
-          onClick={() => handleDeleteWilayaConfirmation(wilaya._id)}
-          className="text-red-400 hover:text-red-300 transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {isAdmin() && (
+          <>
+            {isAdmin() && (
+            <button 
+              onClick={() => openEditWilayaModal(wilaya)}
+              className="text-white/60 hover:text-white transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+          )}
+            {isAdmin() && (
+            <button 
+              onClick={() => handleDeleteWilayaConfirmation(wilaya._id)}
+              className="text-red-400 hover:text-red-300 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+          </>
+        )}
       </div>
     </td>
   </tr>
@@ -3266,7 +3683,7 @@ onClick={() => setSidebarOpen(false)}
           <div className="relative flex-1">
 <div className="inline-block">
   <h3 className="text-xl font-semibold text-gray-900 leading-tight mb-1 relative">
-    {editingOffice ? t('admin.editOffice') : t('admin.editWilaya')}
+    {editingOffice ? 'تعديل المكتب' : 'تعديل الولاية'}
     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-16 h-px bg-gradient-to-r from-transparent via-[#24697f]/40 to-transparent"></div>
   </h3>
   <div className="flex items-center text-gray-500">
@@ -3330,12 +3747,12 @@ if (editingOffice) {
         required
         defaultValue={editingOffice?.name || ''}
         className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
-        placeholder={t('admin.enterOfficeName')}
+        placeholder="أدخل اسم المكتب"
       />
     </div>
   </div>
   <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1 text-right">{t('admin.address')}</label>
+    <label className="block text-xs font-medium text-gray-700 mb-1 text-right">العنوان</label>
     <div className="relative group">
       <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       <input
@@ -3344,7 +3761,7 @@ if (editingOffice) {
         required
         defaultValue={editingOffice?.address || ''}
         className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
-        placeholder={t('admin.enterAddress')}
+        placeholder="أدخل العنوان"
       />
     </div>
   </div>
@@ -3358,12 +3775,12 @@ if (editingOffice) {
         required
         defaultValue={editingOffice?.phone || ''}
         className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
-        placeholder={t('admin.enterPhone')}
+        placeholder="أدخل رقم الهاتف"
       />
     </div>
   </div>
   <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1 text-right">{t('admin.wilaya')}</label>
+    <label className="block text-xs font-medium text-gray-700 mb-1 text-right">الولاية</label>
     <div className="relative group">
       <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       <select
@@ -3371,7 +3788,7 @@ if (editingOffice) {
         defaultValue={editingOffice?.wilayaId?._id || ''}
         className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent appearance-none transition-all duration-300 text-gray-900 hover:bg-gray-100/90 z-10 cursor-pointer text-sm text-right"
       >
-        <option value="">{t('admin.selectWilaya')}</option>
+        <option value="">اختر ولاية</option>
         {wilayas.map((wilaya) => (
           <option key={wilaya._id} value={wilaya._id}>
 {wilaya.name}
@@ -3398,12 +3815,12 @@ if (editingOffice) {
         required
         defaultValue={editingWilaya?.name || ''}
         className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
-        placeholder={debugT('admin.enterWilayaName')}
+        placeholder={debugT('أدخل اسم الولاية')}
       />
     </div>
   </div>
   <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1 text-right">{debugT('admin.imageUrlOptional')}</label>
+    <label className="block text-xs font-medium text-gray-700 mb-1 text-right">رابط الصورة (اختياري)</label>
     <div className="relative group">
       <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
       <input
@@ -3411,7 +3828,7 @@ if (editingOffice) {
         name="image"
         defaultValue={editingWilaya?.image || ''}
         className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
-        placeholder={debugT('admin.enterImageUrl')}
+        placeholder={debugT('أدخل رابط الصورة')}
       />
     </div>
   </div>
@@ -3430,13 +3847,13 @@ if (editingOffice) {
     }}
     className="px-4 py-2 border border-gray-300/50 text-gray-600 rounded-xl hover:bg-gray-100/80 transition-all duration-200 font-medium text-sm"
   >
-    {t('admin.cancel')}
+    إلغاء
   </button>
   <button
     type="submit"
     className="flex-1 px-4 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-xl font-medium transition-all duration-200 text-sm cursor-pointer border-2 border-white/60"
   >
-    {editingOffice ? 'Update Office' : t('admin.updateWilaya')}
+    {editingOffice ? 'تحديث المكتب' : 'تحديث الولاية'}
   </button>
 </div>
           </div>
@@ -3503,29 +3920,31 @@ className={`px-4 py-2 rounded-full border-2 transition-all cursor-pointer ${
           <h2 className="text-xl font-bold text-white">
 {selectedWilaya 
   ? ` ${wilayas.find(w => w._id === selectedWilaya)?.name}`
-  : t('admin.allOffices')
+  : 'جميع المكاتب'
 }
           </h2>
-          <button
-onClick={() => {
-  openAddModal();
-}}
-className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-lg px-4 py-2 text-white text-sm font-medium transition-all hover:scale-105"
-          >
-{t('admin.addNewOffice')}
-          </button>
+          {isAdmin() && (
+            <button
+            onClick={() => {
+              openAddModal();
+            }}
+            className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-lg px-4 py-2 text-white text-sm font-medium transition-all hover:scale-105"
+            >
+            إضافة مكتب جديد
+            </button>
+          )}
         </div>
         
         {filteredOffices.length === 0 ? (
           <div className="text-center py-12">
 <Building className="w-16 h-16 text-white/50 mx-auto mb-4" />
 <h3 className="text-xl font-semibold text-white mb-2">
-  {selectedWilaya ? t('admin.noOfficesInWilaya') : t('admin.noOfficesFound')}
+  {selectedWilaya ? 'لا توجد مكاتب في هذه الولاية' : 'لا توجد مكاتب'}
 </h3>
 <p className="text-white/70 mb-6">
   {selectedWilaya 
-    ? `${t('admin.addFirstOffice')} ${wilayas.find(w => w._id === selectedWilaya)?.name}`
-    : t('admin.startAddingFirstOffice')
+    ? `أضف أول مكتب في ${wilayas.find(w => w._id === selectedWilaya)?.name}`
+    : 'ابدأ بإضافة أول مكتب'
   }
 </p>
           </div>
@@ -3570,21 +3989,25 @@ className="bg-white/20 hover:bg-white/30 border border-white/30 rounded-lg px-4 
         </td>
         <td className="py-3 px-4">
           <div className="flex flex-wrap gap-1">
-<button 
-  onClick={() => openEditOfficeModal(office)}
-  className="text-white/60 hover:text-white transition-colors"
->
-  <Edit className="w-4 h-4" />
-</button>
-<button 
-  onClick={() => handleDeleteOfficeConfirmation(office._id)}
-  className="text-red-400 hover:text-red-300 transition-colors"
->
-  <Trash2 className="w-4 h-4" />
-</button>
+            {isAdmin() && (
+              <>
+                <button 
+                  onClick={() => openEditOfficeModal(office)}
+                  className="text-white/60 hover:text-white transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => handleDeleteOfficeConfirmation(office._id)}
+                  className="text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
           <div className="mt-2">
-<span className="text-xs text-white/60">{t('admin.users')}:</span>
+<span className="text-xs text-white/60">المستخدمون:</span>
 <div className="flex flex-wrap gap-1 mt-1">
   {users
     .filter(user => user.officeId === office._id)
@@ -3658,7 +4081,7 @@ className="w-8 h-8 rounded-full object-cover border border-white/30"
       <div className="relative flex-1">
         <div className="inline-block">
           <h3 className="text-xl font-semibold text-gray-900 leading-tight mb-1 relative">
-{isOfficeTab ? debugT('admin.addNewOffice') : debugT('admin.addWilaya')}
+{isOfficeTab ? 'إضافة مكتب جديد' : 'إضافة ولاية'}
 <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-16 h-px bg-gradient-to-r from-transparent via-[#24697f]/40 to-transparent"></div>
           </h3>
           <div className="flex items-center text-gray-500">
@@ -3905,8 +4328,8 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">
 {selectedWilaya 
-  ? `${t('admin.offices')} ${wilayas.find(w => w._id === selectedWilaya)?.name}`
-  : t('admin.allOffices')
+  ? `مكاتب ${wilayas.find(w => w._id === selectedWilaya)?.name}` 
+  : 'جميع المكاتب'
 }
           </h2>
         </div>
@@ -3915,12 +4338,12 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
           <div className="text-center py-12">
 <Building className="w-16 h-16 text-white/50 mx-auto mb-4" />
 <h3 className="text-xl font-semibold text-white mb-2">
-  {selectedWilaya ? t('admin.noOfficesInWilaya') : t('admin.noOfficesFound')}
+  {selectedWilaya ? 'لا توجد مكاتب في هذه الولاية' : 'لا توجد مكاتب'}
 </h3>
 <p className="text-white/70 mb-6">
   {selectedWilaya 
-    ? `${t('admin.addFirstOffice')} ${wilayas.find(w => w._id === selectedWilaya)?.name}`
-    : t('admin.startAddingFirstOffice')
+    ? `أضف أول مكتب في ${wilayas.find(w => w._id === selectedWilaya)?.name}`
+    : 'ابدأ بإضافة أول مكتب'
   }
 </p>
           </div>
@@ -3933,60 +4356,111 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
         <h3 className="text-lg font-semibold text-white">{office.name}</h3>
         <p className="text-white/60 text-sm">{office.address}</p>
       </div>
-      <button 
-        onClick={() => openUserModal(office)}
-        className="bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 border-2 border-white/60 hover:bg-green-700 text-white px-3 py-1 rounded-full cursor-pointer text-sm transition-colors"
-      >
-        إضافة مستخدم للمكتب
-      </button>
+      {isAdmin() && (
+        <button 
+          onClick={() => openUserModal(office)}
+          className="bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 border-2 border-white/60 hover:bg-green-700 text-white px-3 py-1 rounded-full cursor-pointer text-sm transition-colors"
+        >
+          إضافة مستخدم للمكتب
+        </button>
+      )}
     </div>
     
     {/* Users List - User Icons */}
     <div className="border-t border-white/10 pt-3">
       <h4 className="text-sm font-medium text-white/80 mb-2">المستخدمون في المكتب:</h4>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-12 h-[4rem]">
         {users
-          .filter(user => user.officeId === office._id)
-          .map((user) => (
-<button
-  key={user._id}
-  onClick={() => openUserDetailsModal(user)}
-  className="relative group"
-  title={`${user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username || user.name || 'Unknown'} - ${user.role || 'No Role'}`}
->
-  {user.image ? (
-    <div className="w-10 h-10 rounded-full border-2 border-white/30 hover:border-blue-400 transition-all hover:scale-110 cursor-pointer overflow-hidden bg-gray-800">
-      <img 
-        src={user.image} 
-        alt={user.firstName || user.username || 'User'}
-        className="w-full h-full object-contain"
-      />
-    </div>
-  ) : (
-    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/30 hover:border-blue-400 transition-all hover:scale-110 cursor-pointer">
-      <Users className="w-5 h-5 text-white/70" />
-    </div>
-  )}
-  {/* User role indicator */}
-  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border border-white/30 flex items-center justify-center">
-    <span className="text-xs text-white">
-      {user.role === 'admin' ? 'A' : user.role === 'employer' ? 'E' : 'U'}
-    </span>
-  </div>
-  {/* Delete button - shows on hover */}
-  <div
-    onClick={(e) => {
-      e.stopPropagation();
-      handleDeleteUserConfirmation(user._id);
-    }}
-    className="absolute -top-4 -left-3 w-5 h-5 bg-red-500 rounded-full border border-white/30 flex items-center justify-center transition-all duration-200 hover:bg-red-600 hover:scale-110 z-[99999] cursor-pointer"
-    title="حذف المستخدم"
+          .filter(user => user && user.officeId === office._id)
+          .map((user) => {
+            // Don't default to true, use the actual value or false if undefined
+            const isActive = user?.isActive !== undefined ? user.isActive : false;
+            return (
+<div className="flex flex-col items-center">
+  <button
+    key={user._id}
+    onClick={() => openUserDetailsModal(user)}
+    className={`relative group transition-all duration-200 ${
+      !isActive ? 'opacity-50 grayscale' : ''
+    }`}
+    title={`${user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username || user.name || 'Unknown'} - ${user.role || 'No Role'} - ${isActive ? 'نشط' : 'غير نشط'}`}
   >
-    <X className="w-3 h-3 text-white" />
+    <div className={`w-10 h-10 rounded-full border-2 transition-all hover:scale-110 cursor-pointer overflow-hidden ${
+      !isActive 
+        ? 'border-gray-400 bg-gray-600' 
+        : 'border-white/30 bg-gray-800 hover:border-blue-400'
+    }`}>
+      {user.image ? (
+        <img 
+          src={user.image} 
+          alt={user.firstName || user.username || 'User'}
+          className={`w-full h-full object-contain ${!isActive ? 'grayscale' : ''}`}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <Users className={`w-5 h-5 ${!isActive ? 'text-gray-400' : 'text-white/70'}`} />
+        </div>
+      )}
+    </div>
+    {/* User role indicator */}
+    <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border border-white/30 flex items-center justify-center ${
+      !isActive ? 'bg-gray-500' : 'bg-blue-500'
+    }`}>
+      <span className="text-xs text-white">
+        {user.role === 'admin' ? 'A' : user.role === 'employer' ? 'E' : 'U'}
+      </span>
+    </div>
+    {/* Toggle status button - shows on hover */}
+    {isAdmin() && (
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          handleToggleUserConfirmation(user._id);
+        }}
+        className={`absolute -top-1 -right-3 w-5 h-5 rounded-full border border-white/30 flex items-center justify-center transition-all duration-200 hover:scale-110 z-[99999] cursor-pointer ${
+          isActive 
+            ? 'bg-orange-500 hover:bg-orange-600' 
+            : 'bg-blue-500 hover:bg-blue-600'
+        }`}
+        title={isActive ? 'تعطيل المستخدم' : 'تفعيل المستخدم'}
+      >
+        <Power className="w-3 h-3 text-white" />
+      </div>
+    )}
+    {/* Delete button - shows on hover */}
+    {isAdmin() && (
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDeleteUserConfirmation(user._id);
+        }}
+        className="absolute -top-1 -left-3 w-5 h-5 bg-red-500 rounded-full border border-white/30 flex items-center justify-center transition-all duration-200 hover:bg-red-600 hover:scale-110 z-[99999] cursor-pointer"
+        title="حذف المستخدم"
+      >
+        <X className="w-3 h-3 text-white" />
+      </div>
+    )}
+  </button>
+  {/* User details below icon */}
+  <div className="mt-1 text-center max-w-[80px]">
+    <div className={`text-xs font-medium truncate ${
+      !isActive ? 'text-gray-400' : 'text-white'
+    }`}>
+      {user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}` 
+        : user.name || user.username || 'Unknown'
+      }
+    </div>
+    <div className={`text-xs truncate ${
+      !isActive ? 'text-gray-500' : 'text-white/70'
+    }`}>
+      @{user.username || 'N/A'}
+    </div>
   </div>
-</button>
-          ))}
-        {users.filter(user => user.officeId === office._id).length === 0 && (
+</div>
+            );
+          })}
+        {users.filter(user => user && user.officeId === office._id).length === 0 && (
           <div className="flex items-center justify-center w-full py-4">
 <span className="bg-white/10 text-white/60 text-xs px-3 py-2 rounded-full">
   لا يوجد مستخدمين
@@ -4003,6 +4477,109 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
     </>
   )}
 </div>
+          )}
+
+          {/* Admin Users Section */}
+          {activeTab === 'users' && isAdmin() && (
+            <div className="bg-white/10 backdrop-blur-md mt-2 rounded-xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-white">مستخدمو الإدارة</h2>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="bg-white/5 rounded-lg p-4 sm:p-6 border border-white/10">
+                  <div className="border-t border-white/10 pt-3">
+                    <h4 className="text-sm font-medium text-white/80 mb-2">مستخدمو النظام:</h4>
+                    <div className="flex flex-wrap gap-12 h-[4rem]">
+                      {users
+                        .filter(user => user && (user.role === 'admin' || user.role === 'sousAdmin'))
+                        .map((user) => {
+                          const isActive = user?.isActive !== undefined ? user.isActive : false;
+                          const isCurrentUserAdmin = user._id === adminUser?._id;
+                          return (
+                            <div className="flex flex-col items-center">
+                              <button
+                                key={user._id}
+                                onClick={() => openUserDetailsModal(user)}
+                                className={`relative group transition-all duration-200 ${
+                                  !isActive ? 'opacity-50 grayscale' : ''
+                                }`}
+                                title={`${user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username || user.name || 'Unknown'} - ${user.role || 'No Role'} - ${isActive ? 'نشط' : 'غير نشط'}`}
+                              >
+                                <div className={`w-10 h-10 rounded-full border-2 transition-all hover:scale-110 cursor-pointer overflow-hidden ${
+                                  !isActive 
+                                    ? 'border-gray-400 bg-gray-600' 
+                                    : 'border-white/30 bg-gray-800 hover:border-blue-400'
+                                }`}>
+                                  {user.image ? (
+                                    <img 
+                                      src={user.image} 
+                                      alt={user.firstName || user.username || 'User'}
+                                      className={`w-full h-full object-contain ${!isActive ? 'grayscale' : ''}`}
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <Users className={`w-5 h-5 ${!isActive ? 'text-gray-400' : 'text-white/70'}`} />
+                                    </div>
+                                  )}
+                                </div>
+                                {/* User role indicator */}
+                                <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border border-white/30 flex items-center justify-center ${
+                                  !isActive ? 'bg-gray-500' : 'bg-purple-500'
+                                }`}>
+                                  <span className="text-xs text-white">
+                                    {user.role === 'admin' ? 'A' : 'S'}
+                                  </span>
+                                </div>
+                                {/* Edit button - shows on hover for admin users (except current admin) */}
+                                {isAdmin() && !isCurrentUserAdmin && (
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowUserDetailsModal(false);
+                                      setSelectedUser(user);
+                                      setShowEditUserModal(true);
+                                    }}
+                                    className="absolute -bottom-1 -left-3 w-5 h-5 bg-blue-500 rounded-full border border-white/30 flex items-center justify-center transition-all duration-200 hover:bg-blue-600 hover:scale-110 z-[99999] cursor-pointer"
+                                    title="تعديل معلومات المستخدم"
+                                  >
+                                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                    </svg>
+                                  </div>
+                                )}
+                              </button>
+                              {/* User details below icon */}
+                              <div className="mt-1 text-center max-w-[80px]">
+                                <div className={`text-xs font-medium truncate ${
+                                  !isActive ? 'text-gray-400' : 'text-white'
+                                }`}>
+                                  {user.firstName && user.lastName 
+                                    ? `${user.firstName} ${user.lastName}` 
+                                    : user.name || user.username || 'Unknown'
+                                  }
+                                </div>
+                                <div className={`text-xs truncate ${
+                                  !isActive ? 'text-gray-500' : 'text-white/70'
+                                }`}>
+                                  @{user.username || 'N/A'}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      {users.filter(user => user && (user.role === 'admin' || user.role === 'sousAdmin')).length === 0 && (
+                        <div className="flex items-center justify-center w-full py-4">
+                          <span className="bg-white/10 text-white/60 text-xs px-3 py-2 rounded-full">
+                            لا يوجد مستخدمي إدارة
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* User Details Modal */}
@@ -4115,18 +4692,48 @@ className="w-20 h-20 rounded-full object-cover border-4 border-white/50 shadow-l
         <div className="flex justify-between items-center py-3 px-4 bg-gray-50/50 rounded-xl border border-gray-200/30">
           <span className="text-gray-600 text-sm font-medium">الحالة:</span>
           <span className={`px-3 py-1 rounded-full text-sm font-medium border ${
-selectedUser.isActive 
-  ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800 border-green-300/50' 
-  : 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 border-red-300/50'
+            (selectedUser.isActive ?? true) 
+              ? 'bg-gradient-to-r from-green-100 to-green-200 text-green-800 border-green-300/50' 
+              : 'bg-gradient-to-r from-red-100 to-red-200 text-red-800 border-red-300/50'
           }`}>
-{selectedUser.isActive ? 'نشط' : 'غير نشط'}
+            {(selectedUser.isActive ?? true) ? 'نشط' : 'غير نشط'}
           </span>
         </div>
       </div>
 
+      {/* Important Note Section - Only show to admin users */}
+      {isAdmin() && (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+        <div className="flex items-start gap-3">
+          <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="text-sm text-blue-800">
+            <h4 className="font-semibold mb-2">ملاحظة هامة حول إدارة المستخدمين:</h4>
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <span className="text-orange-500 font-bold">●</span>
+                <div>
+                  <strong>تعطيل المستخدم:</strong> يتم إيقاف صلاحيات الدخول للمستخدم مع الحفاظ على جميع بياناته وحجوزاته السابقة في النظام. يمكن إعادة تفعيله في أي وقت.
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-red-500 font-bold">●</span>
+                <div>
+                  <strong>حذف المستخدم:</strong> يتم حذف المستخدم وكل بياناته بشكل نهائي من النظام، بما في ذلك الحجوزات التي قام بها. <strong>تنبيه:</strong> لن تتمكن من عرض تفاصيل الحجوزات السابقة للمستخدم بعد حذفه.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
+
       {/* Action Buttons */}
       <div className="border-t border-gray-200/30 bg-white/80 p-4 sm:p-6 backdrop-blur-sm -mx-4 -mb-4">
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <button
 type="button"
 onClick={() => setShowUserDetailsModal(false)}
@@ -4134,7 +4741,34 @@ className="px-4 py-2 border border-gray-300/50 text-gray-600 rounded-xl hover:bg
           >
 إغلاق
           </button>
-          <button
+          {isAdmin() && !(selectedUser.role === 'admin' || selectedUser.role === 'sousAdmin') && (
+            <button
+type="button"
+onClick={() => {
+  handleToggleUserConfirmation(selectedUser._id);
+}}
+className={`px-4 py-2 rounded-xl font-medium transition-all duration-200 text-sm ${
+  (selectedUser.isActive ?? true)
+    ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white'
+    : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white'
+}`}
+          >
+{(selectedUser.isActive ?? true) ? 'تعطيل المستخدم' : 'تفعيل المستخدم'}
+          </button>
+          )}
+          {isAdmin() && !(selectedUser.role === 'admin' || selectedUser.role === 'sousAdmin') && (
+            <button
+type="button"
+onClick={() => {
+  handleDeleteUserConfirmation(selectedUser._id);
+}}
+className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl font-medium transition-all duration-200 text-sm"
+          >
+حذف المستخدم
+          </button>
+          )}
+          {isAdmin() && (
+            <button
 type="button"
 onClick={() => {
   setShowUserDetailsModal(false);
@@ -4144,6 +4778,7 @@ className="flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:fr
           >
 تعديل
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -4203,6 +4838,15 @@ className="flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:fr
         e.preventDefault();
         const formData = new FormData(e.target);
         
+        const newPassword = formData.get('newPassword') as string;
+        const confirmPassword = formData.get('confirmPassword') as string;
+        
+        // Password validation
+        if (newPassword && newPassword !== confirmPassword) {
+          setUserError('كلمة المرور الجديدة وتأكيد كلمة المرور غير متطابقين');
+          return;
+        }
+        
         const userData = {
           username: formData.get('username') as string,
           firstName: formData.get('firstName') as string,
@@ -4212,7 +4856,8 @@ className="flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:fr
           role: formData.get('role') as string,
           officeId: formData.get('officeId') as string,
           image: formData.get('image') as string,
-          address: formData.get('address') as string
+          address: formData.get('address') as string,
+          ...(newPassword && { password: newPassword })
         };
         
         handleEditUser(userData);
@@ -4356,6 +5001,42 @@ className="flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:fr
 </div>
       </div>
 
+      {/* Password Change Section */}
+      <div className="border-t border-gray-200/30 pt-4">
+        <div className="mb-3">
+          <h4 className="text-sm font-medium text-gray-700 text-right mb-2">تغيير كلمة المرور</h4>
+          <p className="text-xs text-gray-500 text-right">اترك الحقول فارغة إذا كنت لا تريد تغيير كلمة المرور</p>
+        </div>
+        
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1 text-right">كلمة المرور الجديدة</label>
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <input
+                type="password"
+                name="newPassword"
+                className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+                placeholder="أدخل كلمة المرور الجديدة (اختياري)"
+              />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1 text-right">تأكيد كلمة المرور الجديدة</label>
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-[#24697f]/10 to-teal-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <input
+                type="password"
+                name="confirmPassword"
+                className="relative w-full px-3 py-2 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
+                placeholder="أكد كلمة المرور الجديدة (اختياري)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Error Display */}
       {userError && (
         <div className="bg-gradient-to-r from-red-50/80 to-red-100/80 rounded-xl border border-red-200/50 backdrop-blur-sm p-3">
@@ -4412,11 +5093,11 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
           {/* Delete Confirmation Modal */}
           {deleteConfirmation.type && (
 <div 
-  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in"
+  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999999] flex items-center justify-center p-4 sm:p-6 animate-fade-in"
   onClick={() => setDeleteConfirmation({ type: null, id: null, name: null })}
 >
   <div 
-    className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000] max-h-[90vh] overflow-y-auto animate-scale-in shadow-2xl transform transition-all duration-300 ease-out"
+    className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000000] max-h-[90vh] overflow-y-auto animate-scale-in shadow-2xl transform transition-all duration-300 ease-out"
     onClick={(e) => e.stopPropagation()}
   >
     <div className="flex items-center mb-4">
@@ -4466,6 +5147,56 @@ handleDeleteUser(deleteConfirmation.id!);
         className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 hover:shadow-lg transform hover:scale-105 transition-all duration-200 ease-out font-medium"
       >
         تأكيد الحذف
+      </button>
+    </div>
+  </div>
+</div>
+          )}
+
+          {/* Toggle User Status Confirmation Modal */}
+          {toggleConfirmation.userId && (
+<div 
+  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999999] flex items-center justify-center p-4 sm:p-6 animate-fade-in"
+  onClick={() => setToggleConfirmation({ userId: null, userName: null, currentStatus: null })}
+>
+  <div 
+    className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-md relative z-[100000000] max-h-[90vh] overflow-y-auto animate-scale-in shadow-2xl transform transition-all duration-300 ease-out"
+    onClick={(e) => e.stopPropagation()}
+  >
+    {/* Background Effects */}
+    <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 via-red-500/20 to-green-500/20 rounded-xl blur-xl opacity-30"></div>
+    
+    <h3 className="text-xl font-bold text-gray-800 mb-4 relative">
+      {toggleConfirmation.currentStatus ? 'تعطيل المستخدم' : 'تفعيل المستخدم'}
+    </h3>
+    
+    <p className="text-gray-600 mb-6">
+      هل أنت متأكد من أنك تريد {toggleConfirmation.currentStatus ? 'تعطيل' : 'تفعيل'} المستخدم "{toggleConfirmation.userName || ''}"؟
+    </p>
+    
+    <div className="flex space-x-3 relative z-[100000001]">
+      <button
+        type="button"
+        onClick={() => setToggleConfirmation({ userId: null, userName: null, currentStatus: null })}
+        className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-400 hover:shadow-md transform hover:scale-105 transition-all duration-200 ease-out font-medium relative z-[100000001]"
+      >
+        إلغاء
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (toggleConfirmation.userId) {
+            handleToggleUserStatus(toggleConfirmation.userId);
+          }
+          setToggleConfirmation({ userId: null, userName: null, currentStatus: null });
+        }}
+        className={`flex-1 px-4 py-2 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-200 ease-out font-medium relative z-[100000001] ${
+          toggleConfirmation.currentStatus 
+            ? 'bg-orange-600 hover:bg-orange-700' 
+            : 'bg-green-600 hover:bg-green-700'
+        }`}
+      >
+        {toggleConfirmation.currentStatus ? 'تعطيل' : 'تفعيل'}
       </button>
     </div>
   </div>
@@ -4721,15 +5452,21 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
     ))}
 </div>
 {/* Add Property Button - Only show when office is selected */}
-{selectedOffice && (
+{selectedOffice && isAdmin() && (
   <div className="flex justify-end">
-    <button
-      onClick={() => setShowAddPropertyModal(true)}
-      className="px-6 py-3 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-xl hover:from-[#3a8faf] hover:to-[#2d9f5d] cursor-pointer border-2 border-white/60 transition-all transform hover:scale-105 shadow-lg shadow-blue-600/30 flex items-center gap-2"
-    >
-      <Home className="w-5 h-5" />
-      إضافة عقار
-    </button>
+    {isAdmin() && (
+          <button
+            onClick={() => {
+    setShowAddPropertyModal(true);
+    setImageLinks([]);
+    setCurrentImageLink('');
+  }}
+            className="px-6 py-3 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-xl hover:from-[#3a8faf] hover:to-[#2d9f5d] cursor-pointer border-2 border-white/60 transition-all transform hover:scale-105 shadow-lg shadow-blue-600/30 flex items-center gap-2"
+          >
+            <Home className="w-5 h-5" />
+            إضافة عقار
+          </button>
+        )}
   </div>
 )}
           </div>
@@ -4741,9 +5478,21 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
         {properties
           .filter((property: any) => {
            
+// If no wilaya is selected, show all properties
 if (!selectedWilaya) return true;
-if (!selectedOffice) return false;
-// Handle both ObjectId and populated object cases
+// If wilaya is selected but no office, show all properties in that wilaya
+if (!selectedOffice) {
+  // Check if property's office belongs to selected wilaya
+  const propertyOffice = offices.find((office: any) => 
+    office._id === property.officeId?._id || 
+    office._id === property.officeId?.id ||
+    office._id === property.officeId?.toString()
+  );
+  return propertyOffice?.wilayaId?._id === selectedWilaya ||
+         propertyOffice?.wilayaId === selectedWilaya ||
+         propertyOffice?.wilayaId?.toString() === selectedWilaya;
+}
+// If both wilaya and office are selected, show properties for that specific office
 return property.officeId?._id === selectedOffice || 
        property.officeId?.id === selectedOffice ||
        property.officeId?.toString() === selectedOffice;
@@ -4846,18 +5595,22 @@ return property.officeId?._id === selectedOffice ||
     
     {/* Action Buttons */}
     <div className="flex gap-2">
-      <button
-        onClick={() => openEditPropertyModal(property)}
-        className="flex-1 px-3 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all text-sm border-2 border-white/60 cursor-pointer"
-      >
-        تعديل
-      </button>
-      <button
-        onClick={() => handleDeleteProperty(property._id)}
-        className="flex-1 px-3 py-2 bg-gradient-to-br from-[#ff4444] to-[#cc0000] text-white rounded-lg hover:from-[#ff3333] hover:to-[#aa0000] transition-all text-sm border-2 border-white/60 cursor-pointer"
-      >
-        حذف
-      </button>
+      {isAdmin() && (
+        <>
+          <button
+            onClick={() => openEditPropertyModal(property)}
+            className="flex-1 px-3 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all text-sm border-2 border-white/60 cursor-pointer"
+          >
+            تعديل
+          </button>
+          <button
+            onClick={() => handleDeleteProperty(property._id)}
+            className="flex-1 px-3 py-2 bg-gradient-to-br from-[#ff4444] to-[#cc0000] text-white rounded-lg hover:from-[#ff3333] hover:to-[#aa0000] transition-all text-sm border-2 border-white/60 cursor-pointer"
+          >
+            حذف
+          </button>
+        </>
+      )}
     </div>
     
       </div>
@@ -5192,14 +5945,16 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowAddPropertyModal(false)}
-          className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm hover:bg-white/30 flex items-center justify-center transition-all duration-300 group border border-white/30"
-        >
-          <svg className="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        {isAdmin() && (
+          <button
+            onClick={() => setShowAddPropertyModal(false)}
+            className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm hover:bg-white/30 flex items-center justify-center transition-all duration-300 group border border-white/30"
+          >
+            <svg className="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
     
@@ -5345,6 +6100,7 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
             name="pricePerDay"
             required
             min="0"
+            step="0.01"
             onChange={(e) => addReservationType === 'monthly' ? handleAddDailyPriceChange(e.target.value) : undefined}
             className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
             placeholder="أدخل السعر باليوم"
@@ -5571,22 +6327,35 @@ className={`flex-1 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-600 hover:f
             </button>
           </div>
           
-          {/* Image links tags */}
+          {/* Image preview thumbnails */}
           {imageLinks.length > 0 && (
-<div className="flex flex-wrap gap-2">
+<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-4">
   {imageLinks.map((link, index) => (
     <div
       key={index}
-      className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+      className="relative group"
     >
-      <span className="truncate max-w-xs">{link}</span>
+      <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border-2 border-gray-200">
+        <img
+          src={link}
+          alt={`Property image ${index + 1}`}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+          onError={(e) => {
+            e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yMCAyNkMxOC4yNSAyNiAxNi43NSAyNS4yNSAxNS41IDIzLjc1QzE0LjI1IDIyLjI1IDEzLjc1IDIwLjUgMTMuNzUgMTguNUMxMy43NSAxNi41IDE0LjI1IDE0Ljc1IDE1LjUgMTMuMjVDMTYuNzUgMTEuNzUgMTguMjUgMTEgMjAgMTFDMjEuNzUgMTEgMjMuMjUgMTEuNzUgMjQuNSAxMy4yNUMyNS43NSAxNC43NSAyNi4yNSAxNi41IDI2LjI1IDE4LjVDMjYuMjUgMjAuNSAyNS43NSAyMi4yNSAyNC41IDIzLjc1QzIzLjI1IDI1LjI1IDIxLjc1IDI2IDIwIDI2WiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
+          }}
+        />
+      </div>
       <button
         type="button"
         onClick={() => removeImageLink(index)}
-        className="text-blue-600 hover:text-blue-800 font-bold"
+        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+        title="حذف الصورة"
       >
         ×
       </button>
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+        <p className="text-white text-xs truncate">صورة {index + 1}</p>
+      </div>
     </div>
   ))}
 </div>
@@ -5895,6 +6664,7 @@ setAddPropertyAvailable(true);
             name="pricePerDay"
             required
             min="0"
+            step="0.01"
             defaultValue={editingProperty?.pricePerDay || ''}
             onChange={(e) => editReservationType === 'monthly' ? handleEditDailyPriceChange(e.target.value) : undefined}
             className="relative w-full px-4 py-3 border border-gray-300/50 bg-gray-50/90 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-[#24697f] focus:border-transparent transition-all duration-300 text-gray-900 placeholder-gray-600 hover:bg-gray-100/90 z-10 text-sm text-right"
@@ -6116,22 +6886,35 @@ setAddPropertyAvailable(true);
 </button>
           </div>
           
-          {/* Image links tags */}
+          {/* Image preview thumbnails */}
           {imageLinks.length > 0 && (
-<div className="flex flex-wrap gap-2">
+<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-4">
   {imageLinks.map((link, index) => (
     <div
       key={index}
-      className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+      className="relative group"
     >
-      <span className="truncate max-w-xs">{link}</span>
+      <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border-2 border-gray-200">
+        <img
+          src={link}
+          alt={`Property image ${index + 1}`}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+          onError={(e) => {
+            e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yMCAyNkMxOC4yNSAyNiAxNi43NSAyNS4yNSAxNS41IDIzLjc1QzE0LjI1IDIyLjI1IDEzLjc1IDIwLjUgMTMuNzUgMTguNUMxMy43NSAxNi41IDE0LjI1IDE0Ljc1IDE1LjUgMTMuMjVDMTYuNzUgMTEuNzUgMTguMjUgMTEgMjAgMTFDMjEuNzUgMTEgMjMuMjUgMTEuNzUgMjQuNSAxMy4yNUMyNS43NSAxNC43NSAyNi4yNSAxNi41IDI2LjI1IDE4LjVDMjYuMjUgMjAuNSAyNS43NSAyMi4yNSAyNC41IDIzLjc1QzIzLjI1IDI1LjI1IDIxLjc1IDI2IDIwIDI2WiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
+          }}
+        />
+      </div>
       <button
         type="button"
         onClick={() => removeImageLink(index)}
-        className="text-blue-600 hover:text-blue-800 font-bold"
+        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+        title="حذف الصورة"
       >
         ×
       </button>
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+        <p className="text-white text-xs truncate">صورة {index + 1}</p>
+      </div>
     </div>
   ))}
 </div>
@@ -6542,7 +7325,7 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
                 // reservationItem might be an object (if populated) or just an ID string
                 const reservationId = typeof reservationItem === 'string' ? reservationItem : reservationItem.id || reservationItem._id;
                 
-                const reservation = reservations.find((r: any) => r._id === reservationId);
+                const reservation = reservations.find((r: any) => r && r._id === reservationId);
                 if (!reservation) {
                   return false;
                 }
@@ -6641,7 +7424,7 @@ className={`px-4 py-2 rounded-full border-2 transition-all ${
           const reservation = reservations.find((r: any) => {
             const reservationPropertyId = typeof r.propertyId === 'string' 
               ? r.propertyId 
-              : r.propertyId?._id || r.propertyId.id;
+              : (r.propertyId && r.propertyId?._id) || (r.propertyId && r.propertyId.id);
             return reservationPropertyId === property._id;
           });
           const isExpired = reservation && new Date() > new Date(reservation.endDate);
@@ -6729,13 +7512,14 @@ const reservation = reservations.find((r: any) => {
     : r.propertyId?._id || r.propertyId.id;
   return reservationPropertyId === property._id;
 });
-openEditReservationModal(reservation);
+{isAdmin() ? openEditReservationModal(reservation) : openEditReservationModal(reservation)} // Always open modal but admin can edit, sousadmin can only view
           }}
           className="w-full px-4 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all cursor-pointer border-2 border-white/60"
         >
-          تعديل الحجز الأخير
+          {isAdmin() ? 'تعديل الحجز الأخير' : 'رؤية الحجز الأخير'}
         </button>
-        <button
+        {isAdmin() && (
+          <button
           onClick={() => {
             setSelectedPropertyForReservation(property._id);
             resetAddReservationForm();
@@ -6745,6 +7529,7 @@ openEditReservationModal(reservation);
         >
           إضافة حجز آخر
         </button>
+        )}
         <button
           onClick={() => {
             setSelectedPropertyForReservationsList(property._id);
@@ -6752,14 +7537,16 @@ openEditReservationModal(reservation);
           }}
           className="w-full px-4 py-2 bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] text-white rounded-lg hover:from-[#7c3aed] hover:to-[#6d28d9] transition-all cursor-pointer border-2 border-white/60"
         >
-          عرض الحجوزات الأخرى
+          {isAdmin() ? 'عرض الحجوزات الأخرى' : 'عرض الحجوزات الأخر'}
         </button>
-        <button
+        {isAdmin() && (
+          <button
           onClick={() => handleClearAllReservations(property._id, property.title)}
           className="w-full px-4 py-2 bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white rounded-lg hover:from-[#dc2626] hover:to-[#b91c1c] transition-all cursor-pointer border-2 border-white/60"
         >
           جعل كل الحجوزات مكتملة
         </button>
+        )}
               </div>
     )}
     
@@ -6828,12 +7615,12 @@ openEditReservationModal(reservation);
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:p-6">
-{filteredReservations.map((reservation: any) => {
+{filteredReservations.filter(reservation => reservation != null).map((reservation: any) => {
   // Check if this reservation's property is currently reserved
   // AND this reservation is the active one for that property
   const reservationPropertyId = typeof reservation.propertyId === 'string' 
     ? reservation.propertyId 
-    : reservation.propertyId?._id || reservation.propertyId.id;
+    : (reservation.propertyId && reservation.propertyId?._id) || (reservation.propertyId && reservation.propertyId.id);
   
   const property = properties.find((p: any) => p._id === reservationPropertyId);
   
@@ -6918,20 +7705,24 @@ openEditReservationModal(reservation);
     </div>
     
     <div className="flex space-x-2 mt-3">
-      <button
-        onClick={() => {
-          openEditReservationModal(reservation);
-        }}
-        className="flex-1 px-3 mx-2 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all text-sm cursor-pointer border-2 border-white/60"
-      >
-        تعديل
-      </button>
-      <button
-        onClick={() => handleDeleteReservation(reservation._id)}
-        className="flex-1 px-3 py-2 bg-gradient-to-br from-[#ff4444] to-[#cc0000] text-white rounded-lg hover:from-[#ff3333] hover:to-[#aa0000] transition-all text-sm cursor-pointer border-2 border-white/60"
-      >
-        حذف
-      </button>
+      {isAdmin() && (
+        <>
+          <button
+            onClick={() => {
+              openEditReservationModal(reservation);
+            }}
+            className="flex-1 px-3 mx-2 py-2 bg-gradient-to-br from-[#4a9fbf] via-[#5aafca] to-[#3daf6d] text-white rounded-lg hover:from-[#3a8faf] hover:to-[#2d9f5d] transition-all text-sm cursor-pointer border-2 border-white/60"
+          >
+            تعديل
+          </button>
+          <button
+            onClick={() => handleDeleteReservation(reservation._id)}
+            className="flex-1 px-3 py-2 bg-gradient-to-br from-[#ff4444] to-[#cc0000] text-white rounded-lg hover:from-[#ff3333] hover:to-[#aa0000] transition-all text-sm cursor-pointer border-2 border-white/60"
+          >
+            حذف
+          </button>
+        </>
+      )}
     </div>
   </div>
   );
@@ -7531,7 +8322,7 @@ setAddReservationForm(prev => ({
         </div>
       )}
 
-      <div className="flex space-x-3 pt-4">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
         <button
           type="button"
           onClick={() => {
@@ -7540,7 +8331,7 @@ setSelectedPropertyForReservation('');
 setReservationError(null);
 setPreSelectedDates(null);
           }}
-          className="flex-1 px-4 py-2 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
         >
           إلغاء
         </button>
@@ -7549,14 +8340,45 @@ setPreSelectedDates(null);
           onClick={() => {
 setShowContractModal(true);
           }}
-          className="flex-1 mx-2 px-6 py-3 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600  text-white rounded-lg hover:bg-green-700 transition-colors"
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base"
         >
           إنشاء عقد
         </button>
         <button
+          type="button"
+          onClick={() => {
+            // Get form data to generate invoice
+            const form = document.querySelector('form') as HTMLFormElement;
+            const formData = new FormData(form);
+            
+            // Generate invoice data
+            const invoice = {
+              invoiceNumber: `INV-${Date.now()}`,
+              invoiceDate: new Date().toISOString().split('T')[0],
+              customerName: formData.get('customerName') as string || '',
+              customerPhone: formData.get('customerPhone') as string || '',
+              propertyName: selectedPropertyForReservation ? properties.find(p => p._id === selectedPropertyForReservation)?.title || '' : '',
+              propertyAddress: 'شارع العقار، المشرية',
+              startDate: formData.get('startDate') as string || '',
+              endDate: formData.get('endDate') as string || '',
+              totalPrice: parseFloat(addReservationForm.totalPrice) || 0,
+              paidAmount: parseFloat(addReservationForm.paidAmount) || 0,
+              remainingAmount: parseFloat(addReservationForm.remainingAmount) || 0,
+              paymentStatus: addReservationForm.paymentStatus as 'pending' | 'partial' | 'paid',
+              reservationId: `RES-${Date.now()}`,
+              notes: addReservationForm.notes || []
+            };
+            setInvoiceData(invoice);
+            setShowInvoiceModal(true);
+          }}
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-lg hover:bg-purple-800 transition-colors text-sm sm:text-base"
+        >
+          الفاتورة
+        </button>
+        <button
           type="submit"
           disabled={isAddingReservation}
-          className={`flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 ${
+          className={`flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base ${
             isAddingReservation ? 'opacity-75 cursor-not-allowed' : ''
           }`}
         >
@@ -7627,9 +8449,9 @@ setShowContractModal(true);
           // Handle different property ID structures
           const propertyId = typeof editingReservation?.propertyId === 'string' 
             ? editingReservation?.propertyId 
-            : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+            : (editingReservation?.propertyId && editingReservation?.propertyId?._id) || (editingReservation?.propertyId && editingReservation?.propertyId?.id);
           
-          const property = properties.find((p: any) => p._id === propertyId);
+          const property = properties.find((p: any) => p && p._id === propertyId);
           if (!property) return null;
           
           return (
@@ -7700,7 +8522,7 @@ setShowContractModal(true);
         // Handle different property ID structures for validation
         const propertyId = typeof editingReservation?.propertyId === 'string' 
           ? editingReservation?.propertyId 
-          : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+          : (editingReservation?.propertyId && editingReservation?.propertyId?._id) || (editingReservation?.propertyId && editingReservation?.propertyId?.id);
         
         // Monthly reservation validation
         const monthlyValidation = validateMonthlyReservation(startDate, endDate, propertyId);
@@ -7738,7 +8560,7 @@ setShowContractModal(true);
             // Handle different property ID structures
             const propertyId = typeof editingReservation?.propertyId === 'string' 
               ? editingReservation?.propertyId 
-              : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+              : (editingReservation?.propertyId && editingReservation?.propertyId?._id) || (editingReservation?.propertyId && editingReservation?.propertyId?.id);
             
             return properties.find((p: any) => p._id === propertyId)?.title || 'العقار المحدد';
           })()}
@@ -7780,10 +8602,19 @@ defaultValue={editingReservation?.startDate ? new Date(editingReservation.startD
 onChange={(e) => {
   const startDate = e.target.value;
   // Handle different property ID structures
-  const propertyId = typeof editingReservation?.propertyId === 'string' 
-    ? editingReservation?.propertyId 
-    : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
-  const property = properties.find((p: any) => p._id === propertyId);
+  const propertyId = editingReservation?.propertyId;
+  let propertyIdValue: string | undefined;
+  if (propertyId) {
+    if (typeof propertyId === 'string') {
+      propertyIdValue = propertyId;
+    } else if (propertyId?._id) {
+      propertyIdValue = propertyId._id;
+    } else if (propertyId?.id) {
+      propertyIdValue = propertyId.id;
+    }
+  }
+  
+  const property = propertyIdValue ? properties.find((p: any) => p._id === propertyIdValue) : null;
   
   // Auto-calculate end date for monthly properties
   if (property && property.reserveTheProperty === 'monthly' && startDate) {
@@ -7792,12 +8623,14 @@ onChange={(e) => {
     if (endDateInput) {
       endDateInput.value = endDate;
       // Auto-calculate total price
-      const totalPrice = calculateReservationPrice(startDate, endDate, propertyId);
-      const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
-      if (totalPriceInput) {
-        totalPriceInput.value = totalPrice.toString();
-        // Trigger change event to update remaining amount
-        totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+      if (propertyIdValue) {
+        const totalPrice = calculateReservationPrice(startDate, endDate, propertyIdValue);
+        const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
+        if (totalPriceInput) {
+          totalPriceInput.value = totalPrice.toString();
+          // Trigger change event to update remaining amount
+          totalPriceInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
       }
     }
     
@@ -7814,8 +8647,8 @@ onChange={(e) => {
   } else if (startDate) {
     // For daily properties, try to calculate if end date is already set
     const endDateInput = document.querySelector('input[name="endDate"]') as HTMLInputElement;
-    if (endDateInput && endDateInput.value) {
-      const totalPrice = calculateReservationPrice(startDate, endDateInput.value, propertyId);
+    if (endDateInput && endDateInput.value && propertyIdValue) {
+      const totalPrice = calculateReservationPrice(startDate, endDateInput.value, propertyIdValue);
       const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
       if (totalPriceInput) {
         totalPriceInput.value = totalPrice.toString();
@@ -7853,18 +8686,26 @@ onChange={(e) => {
   const startDate = startDateInput?.value;
   
   // Handle different property ID structures
-  const propertyId = typeof editingReservation?.propertyId === 'string' 
-    ? editingReservation?.propertyId 
-    : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+  const propertyId = editingReservation?.propertyId;
+  let propertyIdValue: string | undefined;
+  if (propertyId) {
+    if (typeof propertyId === 'string') {
+      propertyIdValue = propertyId;
+    } else if (propertyId?._id) {
+      propertyIdValue = propertyId._id;
+    } else if (propertyId?.id) {
+      propertyIdValue = propertyId.id;
+    }
+  }
   
-  if (startDate && endDate) {
-    const validation = validateMonthlyReservation(new Date(startDate), new Date(endDate), propertyId);
+  if (startDate && endDate && propertyIdValue) {
+    const validation = validateMonthlyReservation(new Date(startDate), new Date(endDate), propertyIdValue);
     if (!validation.isValid) {
       setReservationError(validation.message || 'فترة الحجز غير صحيحة للحجوزات الشهرية');
     } else {
       setReservationError(null);
       // Auto-calculate total price
-      const totalPrice = calculateReservationPrice(startDate, endDate, propertyId);
+      const totalPrice = calculateReservationPrice(startDate, endDate, propertyIdValue);
       const totalPriceInput = document.querySelector('input[name="totalPrice"]') as HTMLInputElement;
       if (totalPriceInput) {
         totalPriceInput.value = totalPrice.toString();
@@ -8088,9 +8929,9 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
           // Handle different property ID structures
           const propertyId = typeof editingReservation?.propertyId === 'string' 
             ? editingReservation?.propertyId 
-            : editingReservation?.propertyId?._id || editingReservation?.propertyId?.id;
+            : (editingReservation?.propertyId && editingReservation?.propertyId?._id) || (editingReservation?.propertyId && editingReservation?.propertyId?.id);
           
-          const property = properties.find((p: any) => p._id === propertyId);
+          const property = properties.find((p: any) => p && p._id === propertyId);
           const isFamilyProperty = property?.targetAudience === 'family';
           
           if (isFamilyProperty) {
@@ -8215,7 +9056,7 @@ if (newPaymentStatus === 'paid' && totalPriceInput && paidAmountInput && remaini
         </div>
       )}
 
-      <div className="flex space-x-3 pt-4">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4">
         <button
           type="button"
           onClick={() => {
@@ -8223,7 +9064,7 @@ setShowEditReservationModal(false);
 setEditingReservation(null);
 setReservationError(null);
           }}
-          className="flex-1 px-6 py-3 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
         >
           إلغاء
         </button>
@@ -8232,35 +9073,192 @@ setReservationError(null);
           onClick={() => {
 setShowContractModal(true);
           }}
-          className="flex-1 px-6 py-3 mx-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm sm:text-base"
         >
           إنشاء عقد
         </button>
         <button
-          type="submit"
-          disabled={isEditingReservation}
-          className={`flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 ${
-            isEditingReservation ? 'opacity-75 cursor-not-allowed' : ''
-          }`}
+          type="button"
+          onClick={() => {
+            // Generate invoice data from editing reservation
+            if (editingReservation) {
+              const invoice = {
+                invoiceNumber: `INV-${Date.now()}`,
+                invoiceDate: new Date().toISOString().split('T')[0],
+                customerName: editingReservation.customerName,
+                customerPhone: editingReservation.customerPhone,
+                propertyName: properties.find(p => p._id === editingReservation.propertyId)?.title || '',
+                propertyAddress: 'شارع العقار، المشرية',
+                startDate: editingReservation.startDate,
+                endDate: editingReservation.endDate,
+                totalPrice: editingReservation.totalPrice,
+                paidAmount: editingReservation.paidAmount,
+                remainingAmount: editingReservation.remainingAmount,
+                paymentStatus: editingReservation.paymentStatus,
+                reservationId: editingReservation._id,
+                notes: editingReservation.notes || []
+              };
+              setInvoiceData(invoice);
+              setShowInvoiceModal(true);
+            }
+          }}
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-lg hover:bg-purple-800 transition-colors text-sm sm:text-base"
         >
-          {isEditingReservation ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 rounded-full animate-spin">
-                <div className="w-4 h-4 border-2 border-transparent border-t-white rounded-full"></div>
-              </div>
-              جارٍ التحديث...
-            </>
-          ) : (
-            <>
-              تحديث الحجز
-            </>
-          )}
+          الفاتورة
+        </button>
+        {isAdmin() && (
+          <button
+            type="submit"
+            disabled={isEditingReservation}
+            className={`flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base ${
+              isEditingReservation ? 'opacity-75 cursor-not-allowed' : ''
+            }`}
+          >
+            {isEditingReservation ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 rounded-full animate-spin">
+                  <div className="w-4 h-4 border-2 border-transparent border-t-white rounded-full"></div>
+                </div>
+                جارٍ التحديث...
+              </>
+            ) : (
+              <>
+                تحديث الحجز
+              </>
+            )}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowMakeAvailableConfirmModal(true)}
+          className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 mx-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm sm:text-base"
+        >
+          جعل الحجز متاح
         </button>
       </div>
     </form>
     </div>
   </div>
 </div>
+          )}
+
+          {/* Make Available Confirmation Modal */}
+          {showMakeAvailableConfirmModal && (
+            <div 
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 "
+              onClick={() => setShowMakeAvailableConfirmModal(false)}
+            >
+              <div 
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 relative z-[100000] max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-6 border-b border-gray-100 rounded-t-2xl">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-2xl font-bold text-white">تأكيد جعل الحجز متاح</h3>
+                    <button
+                      onClick={() => setShowMakeAvailableConfirmModal(false)}
+                      className="text-white/80 hover:text-white transition-colors duration-200 p-2 hover:bg-white/10 rounded-lg"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Content */}
+                <div className="p-6">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                    <p className="text-yellow-800 text-sm font-medium mb-2">
+                      ⚠️ تنبيه مهم
+                    </p>
+                    <p className="text-yellow-700 text-sm">
+                      هذا الحجز بعد تأكيده لن يكون نشطًا على هذا العقار. هذا الحجز الذي يبدأ من تاريخ 
+                      <span className="font-bold"> {editingReservation?.startDate ? new Date(editingReservation.startDate).toLocaleDateString('ar-DZ') : ''} </span>
+                      وينتهي في تاريخ 
+                      <span className="font-bold"> {editingReservation?.endDate ? new Date(editingReservation.endDate).toLocaleDateString('ar-DZ') : ''} </span>
+                      الآن أصبح بدون حجز.
+                    </p>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <h4 className="font-semibold text-gray-800 mb-3">تفاصيل الحجز:</h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">الحالة:</span>
+                        <span className="font-medium">{editingReservation?.status || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">حالة الدفع:</span>
+                        <span className="font-medium">{editingReservation?.paymentStatus || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">المبلغ المتبقي:</span>
+                        <span className="font-medium">{editingReservation?.remainingAmount || 0} دج</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">المبلغ المدفوع:</span>
+                        <span className="font-medium">{editingReservation?.paidAmount || 0} دج</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">الإجمالي:</span>
+                        <span className="font-medium">{editingReservation?.totalPrice || 0} دج</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">اسم العميل:</span>
+                        <span className="font-medium">{editingReservation?.customerName || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">هاتف العميل:</span>
+                        <span className="font-medium">{editingReservation?.customerPhone || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">الحالة الاجتماعية:</span>
+                        <span className="font-medium">{editingReservation?.isMarried ? 'متزوج' : 'أعزب'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">عدد الأشخاص:</span>
+                        <span className="font-medium">{editingReservation?.numberOfPeople || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">صور الهوية:</span>
+                        <span className="font-medium">{editingReservation?.identityImages?.length || 0} صور</span>
+                      </div>
+                    </div>
+                    
+                    {editingReservation?.notes && editingReservation.notes.length > 0 && (
+                      <div className="mt-3">
+                        <span className="text-gray-600 text-sm">ملاحظات:</span>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {editingReservation.notes.map((note: string, index: number) => (
+                            <span key={index} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                              {note}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={() => setShowMakeAvailableConfirmModal(false)}
+                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      onClick={handleMakeReservationAvailable}
+                      className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                    >
+                      تأكيد وجعل الحجز متاح
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Reservations List Modal */}
@@ -8361,7 +9359,7 @@ setShowContractModal(true);
                                   }}
                                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                                 >
-                                  تعديل الحجز
+                                  {isAdmin() ? 'تعديل الحجز' : 'رؤية الحجز'}
                                 </button>
                               </div>
                             </div>
@@ -8391,6 +9389,15 @@ setShowContractModal(true);
             onClose={() => setShowContractModal(false)}
           />
 
+          {/* Invoice Modal */}
+          {showInvoiceModal && invoiceData && (
+            <InvoiceModal 
+              isOpen={showInvoiceModal}
+              onClose={() => setShowInvoiceModal(false)}
+              invoiceData={invoiceData}
+            />
+          )}
+
           {/* History Management */}
           {activeTab === 'history' && (
 <div className="space-y-6">
@@ -8419,11 +9426,13 @@ setShowContractModal(true);
       item.action === 'reservation_created' ? 'bg-green-500/20' :
       item.action === 'reservation_updated' ? 'bg-blue-500/20' :
       item.action === 'reservation_cancelled' ? 'bg-red-500/20' :
+      item.action === 'reservation_made_available' ? 'bg-orange-500/20' :
       'bg-gray-500'
     }`}>
       {item.action === 'reservation_created' && <Clock className="w-4 h-4 text-green-400" />}
       {item.action === 'reservation_updated' && <Edit className="w-4 h-4 text-blue-400" />}
       {item.action === 'reservation_cancelled' && <Trash2 className="w-4 h-4 text-red-400" />}
+      {item.action === 'reservation_made_available' && <RefreshCw className="w-4 h-4 text-orange-400" />}
     </div>
     <span className="text-white font-medium text-sm sm:text-base break-words flex-1 min-w-0">{item.description}</span>
   </div>
@@ -8639,6 +9648,106 @@ setShowContractModal(true);
 </div>
           )}
 
+          {/* Backup Management */}
+          {activeTab === 'backup' && (
+            <div className="space-y-6">
+              <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-white">النسخ الاحتياطية</h2>
+                  <button
+                    onClick={handleCreateBackup}
+                    disabled={isCreatingBackup}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-500 text-white rounded-lg hover:from-[#1a5466] hover:to-teal-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Database className="w-4 h-4" />
+                    {isCreatingBackup ? 'جارٍ إنشاء نسخة احتياطية...' : 'إنشاء نسخة احتياطية'}
+                  </button>
+                </div>
+
+                {backupLoading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <LoadingSpinner size="md" text="جاري تحميل النسخ الاحتياطية..." />
+                  </div>
+                ) : backups.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Database className="w-16 h-16 text-white/40 mx-auto mb-4" />
+                    <p className="text-white/60 text-lg mb-4">لا توجد نسخ احتياطية متاحة</p>
+                    <button
+                      onClick={handleCreateBackup}
+                      disabled={isCreatingBackup}
+                      className="px-4 py-2 bg-gradient-to-r from-[#24697f] to-teal-500 text-white rounded-lg hover:from-[#1a5466] hover:to-teal-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      إنشاء أول نسخة احتياطية
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {backups.map((backup: any) => (
+                      <div key={backup._id} className="bg-white/5 rounded-lg border border-white/20 hover:bg-white/10 transition-all">
+                        <div className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold text-white mb-2">{backup.name}</h3>
+                              <p className="text-white/60 text-sm mb-3">{backup.description}</p>
+                              
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                                <div className="text-white/70">
+                                  <span className="block text-xs">العقارات</span>
+                                  <span className="text-white font-medium">{backup.metadata?.totalProperties || 0}</span>
+                                </div>
+                                <div className="text-white/70">
+                                  <span className="block text-xs">الحجوزات</span>
+                                  <span className="text-white font-medium">{backup.metadata?.totalReservations || 0}</span>
+                                </div>
+                                <div className="text-white/70">
+                                  <span className="block text-xs">المستخدمون</span>
+                                  <span className="text-white font-medium">{backup.metadata?.totalUsers || 0}</span>
+                                </div>
+                                <div className="text-white/70">
+                                  <span className="block text-xs">الحجم</span>
+                                  <span className="text-white font-medium">{backup.metadata?.backupSize || 'غير معروف'}</span>
+                                </div>
+                                <div className="text-white/70">
+                                  <span className="block text-xs">تم الإنشاء</span>
+                                  <span className="text-white font-medium">
+                                    {new Date(backup.createdAt).toLocaleDateString('ar-DZ', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {backup.metadata?.createdBy && (
+                                <div className="mt-3 text-sm text-white/60">
+                                  أنشئ بواسطة: {backup.metadata.createdBy.firstName ? 
+                                    `${backup.metadata.createdBy.firstName} ${backup.metadata.createdBy.lastName || ''}` : 
+                                    backup.metadata.createdBy.username || 'مجهول'}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 ml-4">
+                              <button
+                                onClick={() => handleViewBackup(backup._id)}
+                                className="p-2 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors"
+                                title="View Details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Notifications Management */}
           {activeTab === 'notifications' && (
             <div className="space-y-6">
@@ -8670,6 +9779,7 @@ setShowContractModal(true);
           <div className="space-y-2">
             <h2 className="text-2xl font-bold text-white">طلبات الحجز</h2>
             <div className="flex items-center space-x-6">
+              {isAdmin() && (
               <div className="flex items-center space-x-3">
                 <span className="text-sm font-medium text-white/80">قبول تلقائي:</span>
                 <label className="relative cursor-pointer">
@@ -8731,7 +9841,8 @@ setShowContractModal(true);
                   {autoAcceptOrders ? 'مفعل' : 'معطل'}
                 </span>
               </div>
-              {autoAcceptOrders && (
+              )}
+              {autoAcceptOrders && isAdmin() && (
                 <div className="flex items-center space-x-1 text-emerald-400">
                   <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
                   <span className="text-xs text-emerald-400/80">يعمل تلقائياً</span>
@@ -8994,6 +10105,7 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
         </div>
 
         {/* Action Buttons */}
+        {isAdmin() && (
         <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-white/20">
           {editingOrder === order._id ? (
 <>
@@ -9103,6 +10215,7 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
 </>
           )}
         </div>
+        )}
       </div>
     </div>
   </div>
@@ -9139,7 +10252,7 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
                     
                     {/* Filter Controls */}
                     <div className="p-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                         {/* Filter Type */}
                         <div className="space-y-2">
                           <label className="block text-white/90 text-sm font-semibold">نوع التصفية</label>
@@ -9152,6 +10265,8 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
                               setSelectedWilayaForStats('');
                               setSelectedOfficeForStats('');
                               setSelectedEmployerForStats('');
+                              setStartDate('');
+                              setEndDate('');
                               if (newFilter === 'all') {
                                 debouncedFetchFinancialStats();
                               }
@@ -9225,6 +10340,64 @@ className={`w-5 h-5 text-white/60 transition-transform duration-200 ${
                             )}
                           </div>
                         )}
+                      </div>
+
+                      {/* Date Range Filter */}
+                      <div className="border-t border-white/10 pt-4">
+                        <h4 className="text-white/90 text-sm font-semibold mb-3">تصفية حسب الفترة الزمنية</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {/* Start Date */}
+                          <div className="space-y-2">
+                            <label className="block text-white/90 text-sm font-semibold">تاريخ البدء</label>
+                            <input
+                              type="date"
+                              value={startDate}
+                              onChange={(e) => setStartDate(e.target.value)}
+                              className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                              placeholder="اختر تاريخ البدء"
+                            />
+                          </div>
+
+                          {/* End Date */}
+                          <div className="space-y-2">
+                            <label className="block text-white/90 text-sm font-semibold">تاريخ النهاية</label>
+                            <input
+                              type="date"
+                              value={endDate}
+                              onChange={(e) => setEndDate(e.target.value)}
+                              className="w-full px-4 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200"
+                              placeholder="اختر تاريخ النهاية"
+                            />
+                          </div>
+
+                          {/* Apply Date Filter Button */}
+                          <div className="space-y-2">
+                            <label className="block text-white/90 text-sm font-semibold">&nbsp;</label>
+                            <button
+                              onClick={() => debouncedFetchFinancialStats()}
+                              className="w-full px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-200 shadow-lg"
+                            >
+                              تطبيق التصفية
+                            </button>
+                          </div>
+
+                          {/* Clear Date Filter Button */}
+                          <div className="space-y-2">
+                            <label className="block text-white/90 text-sm font-semibold">&nbsp;</label>
+                            <button
+                              onClick={() => {
+                                setStartDate('');
+                                setEndDate('');
+                                setTimeout(() => {
+                                  debouncedFetchFinancialStats();
+                                }, 100);
+                              }}
+                              className="w-full px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all duration-200 shadow-lg"
+                            >
+                              مسح التصفية
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -9446,11 +10619,11 @@ y: {
       {allWilayasStats && allWilayasStats.length > 0 ? (
         <Bar
           data={{
-labels: allWilayasStats.map((item: any) => item.wilayaName || 'ولاية غير معروفة'),
+labels: allWilayasStats.filter((item: any) => item != null).map((item: any) => item.wilayaName || 'ولاية غير معروفة'),
 datasets: [
   {
     label: 'الإيرادات',
-    data: allWilayasStats.map((item: any) => item.completedRevenue || 0) as number[],
+    data: allWilayasStats.filter((item: any) => item != null).map((item: any) => item.completedRevenue || 0) as number[],
     backgroundColor: [
       'rgba(59, 130, 246, 0.8)',
       'rgba(34, 197, 94, 0.8)',
@@ -9470,7 +10643,7 @@ datasets: [
   },
   {
     label: 'عدد الحجوزات',
-    data: allWilayasStats.map((item: any) => item.reservationCount || 0) as number[],
+    data: allWilayasStats.filter((item: any) => item != null).map((item: any) => item.reservationCount || 0) as number[],
     backgroundColor: 'rgba(250, 204, 21, 0.6)',
     borderColor: 'rgba(250, 204, 21, 1)',
     borderWidth: 1,
@@ -9611,29 +10784,29 @@ scales: {
   <div className="h-80">
     <Bar
       data={{
-        labels: allWilayasStats?.map((item: any) => item.wilayaName || 'ولاية غير معروفة') || [],
+        labels: allWilayasStats?.filter((item: any) => item != null).map((item: any) => item.wilayaName || 'ولاية غير معروفة') || [],
         datasets: [
           {
 label: 'في الانتظار',
-data: allWilayasStats?.map((item: any) => 
+data: allWilayasStats?.filter((item: any) => item != null).map((item: any) => 
   item.statusBreakdown?.find((s: any) => s.status === 'pending')?.count || 0) || [],
 backgroundColor: 'rgba(250, 204, 21, 0.8)',
           },
           {
 label: 'مؤكد',
-data: allWilayasStats?.map((item: any) => 
+data: allWilayasStats?.filter((item: any) => item != null).map((item: any) => 
   item.statusBreakdown?.find((s: any) => s.status === 'confirmed')?.count || 0) || [],
 backgroundColor: 'rgba(59, 130, 246, 0.8)',
           },
           {
 label: 'مكتمل',
-data: allWilayasStats?.map((item: any) => 
+data: allWilayasStats?.filter((item: any) => item != null).map((item: any) => 
   item.statusBreakdown?.find((s: any) => s.status === 'completed')?.count || 0) || [],
 backgroundColor: 'rgba(34, 197, 94, 0.8)',
           },
           {
 label: 'ملغي',
-data: allWilayasStats?.map((item: any) => 
+data: allWilayasStats?.filter((item: any) => item != null).map((item: any) => 
   item.statusBreakdown?.find((s: any) => s.status === 'cancelled')?.count || 0) || [],
 backgroundColor: 'rgba(239, 68, 68, 0.8)',
           }
@@ -9870,6 +11043,7 @@ style={{
   scrollbarWidth: 'thin',
   scrollbarColor: '#cbd5e1 #f1f5f9'
 }}
+dir="rtl"
 onClick={(e) => e.stopPropagation()}
           >
 <div className="flex justify-between items-center mb-6">
@@ -9967,21 +11141,13 @@ onClick={(e) => e.stopPropagation()}
   <div>
     <span className="text-xs text-gray-600 block">تاريخ البدء</span>
     <p className="font-medium text-gray-900">
-      {new Date(reservation.startDate).toLocaleDateString('ar-DZ', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}
+      {formatArabicDate(reservation.startDate)}
     </p>
   </div>
   <div>
     <span className="text-xs text-gray-600 block">تاريخ الانتهاء</span>
     <p className="font-medium text-gray-900">
-      {new Date(reservation.endDate).toLocaleDateString('ar-DZ', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}
+      {formatArabicDate(reservation.endDate)}
     </p>
   </div>
   <div>
@@ -10333,6 +11499,7 @@ onClick={(e) => e.stopPropagation()}
               </div>
             </div>
           )}
+
           </div>
         </main>
       </div>
@@ -10344,6 +11511,386 @@ onClick={(e) => e.stopPropagation()}
           onClose={() => setShowProfileModal(false)}
           adminUser={adminUser}
         />
+      )}
+
+      {/* Backup Details Modal - React Portal */}
+      {showBackupDetailsModal && selectedBackupDetails && createPortal(
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[999999] flex items-center justify-center p-4 sm:p-6"
+          onClick={() => {
+            setShowBackupDetailsModal(false);
+            setSelectedBackupDetails(null);
+          }}
+        >
+          <div 
+            className="bg-white/95 backdrop-blur-md rounded-xl p-6 border border-white/20 w-full max-w-4xl max-h-[90vh] overflow-y-auto relative z-[999999]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+              <h3 className="text-2xl font-bold text-gray-800">تفاصيل النسخة الاحتياطية</h3>
+              <button
+                onClick={() => {
+                  setShowBackupDetailsModal(false);
+                  setSelectedBackupDetails(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            {/* Basic Info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم النسخة الاحتياطية</label>
+                  <p className="text-gray-900 font-medium">{selectedBackupDetails.name}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">الوصف</label>
+                  <p className="text-gray-900">{selectedBackupDetails.description}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الإنشاء</label>
+                  <p className="text-gray-900">
+                    {new Date(selectedBackupDetails.createdAt).toLocaleString('ar-DZ', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">حجم النسخة</label>
+                  <p className="text-gray-900 font-medium">{selectedBackupDetails.metadata?.backupSize || 'غير معروف'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">أنشئ بواسطة</label>
+                  <p className="text-gray-900">
+                    {selectedBackupDetails.metadata?.createdBy?.firstName ? 
+                      `${selectedBackupDetails.metadata.createdBy.firstName} ${selectedBackupDetails.metadata.createdBy.lastName || ''}` : 
+                      selectedBackupDetails.metadata?.createdBy?.username || 'مجهول'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
+                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                    selectedBackupDetails.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {selectedBackupDetails.isActive ? 'نشطة' : 'غير نشطة'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Statistics */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <h4 className="text-lg font-semibold text-gray-800 mb-4">إحصائيات البيانات</h4>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{selectedBackupDetails.metadata?.totalProperties || 0}</div>
+                  <div className="text-sm text-gray-600">عقار</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">{selectedBackupDetails.metadata?.totalReservations || 0}</div>
+                  <div className="text-sm text-gray-600">حجز</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">{selectedBackupDetails.metadata?.totalUsers || 0}</div>
+                  <div className="text-sm text-gray-600">مستخدم</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">{selectedBackupDetails.metadata?.totalOffices || 0}</div>
+                  <div className="text-sm text-gray-600">مكتب</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">{selectedBackupDetails.metadata?.totalWilayas || 0}</div>
+                  <div className="text-sm text-gray-600">ولاية</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Data Preview */}
+            <div className="space-y-4">
+              <h4 className="text-lg font-semibold text-gray-800">معاينة البيانات</h4>
+              
+              {/* Properties Preview */}
+              {selectedBackupDetails.data?.properties && selectedBackupDetails.data.properties.length > 0 && (
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h5 className="font-medium text-blue-800">العقارات ({selectedBackupDetails.data.properties.length})</h5>
+                    {selectedBackupDetails.data.properties.length > 5 && (
+                      <button
+                        onClick={() => setShowAllProperties(!showAllProperties)}
+                        className="text-sm text-blue-600 hover:text-blue-800 underline"
+                      >
+                        {showAllProperties ? 'إظهار أقل' : 'إظهار الكل'}
+                      </button>
+                    )}
+                  </div>
+                  <div className={`${showAllProperties ? 'max-h-96' : 'max-h-32'} overflow-y-auto space-y-1`}>
+                    {selectedBackupDetails.data.properties.slice(0, showAllProperties ? selectedBackupDetails.data.properties.length : 5).map((property: any, index: number) => (
+                      <div key={index} className="text-sm text-blue-700">
+                        • {property.title} - {property.location} - {property.pricePerDay} دج/يوم
+                      </div>
+                    ))}
+                    {!showAllProperties && selectedBackupDetails.data.properties.length > 5 && (
+                      <div className="text-sm text-blue-600 italic">
+                        ... و {selectedBackupDetails.data.properties.length - 5} عقارات أخرى
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Reservations Preview */}
+              {selectedBackupDetails.data?.reservations && selectedBackupDetails.data.reservations.length > 0 && (
+                <div className="bg-green-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h5 className="font-medium text-green-800">الحجوزات ({selectedBackupDetails.data.reservations.length})</h5>
+                    {selectedBackupDetails.data.reservations.length > 5 && (
+                      <button
+                        onClick={() => setShowAllReservations(!showAllReservations)}
+                        className="text-sm text-green-600 hover:text-green-800 underline"
+                      >
+                        {showAllReservations ? 'إظهار أقل' : 'إظهار الكل'}
+                      </button>
+                    )}
+                  </div>
+                  <div className={`${showAllReservations ? 'max-h-96' : 'max-h-32'} overflow-y-auto space-y-1`}>
+                    {selectedBackupDetails.data.reservations.slice(0, showAllReservations ? selectedBackupDetails.data.reservations.length : 5).map((reservation: any, index: number) => (
+                      <div key={index} className="text-sm text-green-700">
+                        • {reservation.customerName} - {reservation.customerPhone} - {reservation.totalPrice} دج
+                      </div>
+                    ))}
+                    {!showAllReservations && selectedBackupDetails.data.reservations.length > 5 && (
+                      <div className="text-sm text-green-600 italic">
+                        ... و {selectedBackupDetails.data.reservations.length - 5} حجوزات أخرى
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Users Preview */}
+              {selectedBackupDetails.data?.users && selectedBackupDetails.data.users.length > 0 && (
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h5 className="font-medium text-purple-800">المستخدمون ({selectedBackupDetails.data.users.length})</h5>
+                    {selectedBackupDetails.data.users.length > 5 && (
+                      <button
+                        onClick={() => setShowAllUsers(!showAllUsers)}
+                        className="text-sm text-purple-600 hover:text-purple-800 underline"
+                      >
+                        {showAllUsers ? 'إظهار أقل' : 'إظهار الكل'}
+                      </button>
+                    )}
+                  </div>
+                  <div className={`${showAllUsers ? 'max-h-96' : 'max-h-32'} overflow-y-auto space-y-1`}>
+                    {selectedBackupDetails.data.users.slice(0, showAllUsers ? selectedBackupDetails.data.users.length : 5).map((user: any, index: number) => (
+                      <div key={index} className="text-sm text-purple-700">
+                        • {user.username} - {user.email} - {user.role}
+                      </div>
+                    ))}
+                    {!showAllUsers && selectedBackupDetails.data.users.length > 5 && (
+                      <div className="text-sm text-purple-600 italic">
+                        ... و {selectedBackupDetails.data.users.length - 5} مستخدمين آخرين
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Offices Preview */}
+              {selectedBackupDetails.data?.offices && selectedBackupDetails.data.offices.length > 0 && (
+                <div className="bg-orange-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h5 className="font-medium text-orange-800">المكاتب ({selectedBackupDetails.data.offices.length})</h5>
+                    {selectedBackupDetails.data.offices.length > 5 && (
+                      <button
+                        onClick={() => setShowAllOffices(!showAllOffices)}
+                        className="text-sm text-orange-600 hover:text-orange-800 underline"
+                      >
+                        {showAllOffices ? 'إظهار أقل' : 'إظهار الكل'}
+                      </button>
+                    )}
+                  </div>
+                  <div className={`${showAllOffices ? 'max-h-96' : 'max-h-32'} overflow-y-auto space-y-1`}>
+                    {selectedBackupDetails.data.offices.slice(0, showAllOffices ? selectedBackupDetails.data.offices.length : 5).map((office: any, index: number) => (
+                      <div key={index} className="text-sm text-orange-700">
+                        • {office.name} - {office.location} - {office.phone}
+                      </div>
+                    ))}
+                    {!showAllOffices && selectedBackupDetails.data.offices.length > 5 && (
+                      <div className="text-sm text-orange-600 italic">
+                        ... و {selectedBackupDetails.data.offices.length - 5} مكاتب أخرى
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Wilayas Preview */}
+              {selectedBackupDetails.data?.wilayas && selectedBackupDetails.data.wilayas.length > 0 && (
+                <div className="bg-red-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h5 className="font-medium text-red-800">الولايات ({selectedBackupDetails.data.wilayas.length})</h5>
+                    {selectedBackupDetails.data.wilayas.length > 5 && (
+                      <button
+                        onClick={() => setShowAllWilayas(!showAllWilayas)}
+                        className="text-sm text-red-600 hover:text-red-800 underline"
+                      >
+                        {showAllWilayas ? 'إظهار أقل' : 'إظهار الكل'}
+                      </button>
+                    )}
+                  </div>
+                  <div className={`${showAllWilayas ? 'max-h-96' : 'max-h-32'} overflow-y-auto space-y-1`}>
+                    {selectedBackupDetails.data.wilayas.slice(0, showAllWilayas ? selectedBackupDetails.data.wilayas.length : 5).map((wilaya: any, index: number) => (
+                      <div key={index} className="text-sm text-red-700">
+                        • {wilaya.name} - {wilaya.arabicName}
+                      </div>
+                    ))}
+                    {!showAllWilayas && selectedBackupDetails.data.wilayas.length > 5 && (
+                      <div className="text-sm text-red-600 italic">
+                        ... و {selectedBackupDetails.data.wilayas.length - 5} ولايات أخرى
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowBackupDetailsModal(false);
+                  setSelectedBackupDetails(null);
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                إغلاق
+              </button>
+              <button
+                onClick={() => {
+                  setShowBackupDetailsModal(false);
+                  setSelectedBackupDetails(null);
+                  handleRestoreBackup(selectedBackupDetails._id);
+                }}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+              >
+                استعادة من هذه النسخة
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Restore Confirmation Modal - React Portal */}
+      {showRestoreConfirmation && pendingRestoreBackup && createPortal(
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999999] flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setShowRestoreConfirmation(false)}
+        >
+          <div 
+            className="bg-white rounded-xl p-6 border border-white/20 w-full max-w-2xl max-h-[90vh] overflow-y-auto relative z-[999999]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with Warning Icon */}
+            <div className="flex items-center justify-center mb-6">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 text-red-600" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-2xl font-bold text-center text-gray-800 mb-4">
+              ⚠️ تحذير استعادة النسخة الاحتياطية
+            </h3>
+
+            {/* Warning Messages */}
+            <div className="space-y-4 mb-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-red-800 mb-2">🚨 خطير جداً - فقدان بيانات!</h4>
+                <p className="text-red-700 text-sm">
+                  هذا الإجراء سيحذف <strong>جميع</strong> البيانات الحالية ويستبدلها بالبيانات من النسخة الاحتياطية المحددة.
+                  هذا الإجراء <strong>لا يمكن التراجع عنه أبداً</strong>.
+                </p>
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <h4 className="font-semibold text-orange-800 mb-2">📊 ما سيتم استبداله:</h4>
+                <ul className="text-orange-700 text-sm space-y-1">
+                  <li>• جميع العقارات ({pendingRestoreBackup.metadata?.totalProperties || 0} عقار)</li>
+                  <li>• جميع الحجوزات ({pendingRestoreBackup.metadata?.totalReservations || 0} حجز)</li>
+                  <li>• جميع المستخدمين ({pendingRestoreBackup.metadata?.totalUsers || 0} مستخدم)</li>
+                  <li>• جميع المكاتب ({pendingRestoreBackup.metadata?.totalOffices || 0} مكتب)</li>
+                  <li>• جميع الولايات ({pendingRestoreBackup.metadata?.totalWilayas || 0} ولاية)</li>
+                </ul>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-800 mb-2">💡 توصية آمنة:</h4>
+                <p className="text-blue-700 text-sm mb-3">
+                  قبل الاستعادة، ننصح بشدة بإنشاء نسخة احتياطية من الحالة الحالية للحفاظ على بياناتك الحالية.
+                </p>
+                <button
+                  onClick={() => {
+                    handleCreateBackup();
+                    setShowRestoreConfirmation(false);
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  📦 إنشاء نسخة احتياطية من الحالة الحالية أولاً
+                </button>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="font-semibold text-gray-800 mb-2">ℹ️ معلومات النسخة:</h4>
+                <div className="text-gray-700 text-sm space-y-1">
+                  <p><strong>اسم النسخة:</strong> {pendingRestoreBackup.name}</p>
+                  <p><strong>تاريخ الإنشاء:</strong> {new Date(pendingRestoreBackup.createdAt).toLocaleString('ar-DZ')}</p>
+                  <p><strong>الحجم:</strong> {pendingRestoreBackup.metadata?.backupSize || 'غير معروف'}</p>
+                  <p><strong>أنشئ بواسطة:</strong> {pendingRestoreBackup.metadata?.createdBy?.firstName ? 
+                    `${pendingRestoreBackup.metadata.createdBy.firstName} ${pendingRestoreBackup.metadata.createdBy.lastName || ''}` : 
+                    pendingRestoreBackup.metadata?.createdBy?.username || 'مجهول'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={executeRestoreBackup}
+                className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold"
+              >
+                ⚠️ استعادة البيانات (أنا أفهم المخاطر)
+              </button>
+              
+              <button
+                onClick={() => setShowRestoreConfirmation(false)}
+                className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                ❌ إلغاء الاستعادة
+              </button>
+            </div>
+
+            {/* Final Warning */}
+            <div className="mt-4 text-center">
+              <p className="text-xs text-gray-500">
+                بالضغط على "استعادة البيانات"، أنت تقر بأنك فهمت أن جميع البيانات الحالية ستضيع إلى الأبد.
+              </p>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
 

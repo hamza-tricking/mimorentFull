@@ -45,7 +45,7 @@ export default function Login() {
         console.log('User already logged in:', user.role);
         
         // Redirect based on user role
-        if (user.role === 'admin' || user.role === 'sous admin') {
+        if (user.role === 'admin' || user.role === 'sousAdmin') {
           router.push('/admin/dashboard');
         } else if (user.role === 'employer') {
           router.push('/dashboard');
@@ -131,7 +131,7 @@ export default function Login() {
         localStorage.setItem('user', JSON.stringify(data.data.user));
         
         // Redirect based on user role
-        if (data.data.user.role === 'admin' || data.data.user.role === 'sous admin') {
+        if (data.data.user.role === 'admin' || data.data.user.role === 'sousAdmin') {
           router.push('/admin/dashboard');
         } else {
           router.push('/dashboard'); // Regular user dashboard

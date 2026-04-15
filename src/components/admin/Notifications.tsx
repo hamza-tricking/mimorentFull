@@ -18,7 +18,12 @@ import {
   X,
   Eye,
   Check,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  Settings,
+  ShoppingBag,
+  Tag,
+  Info
 } from 'lucide-react';
 import ReminderModals from './ReminderModals';
 import ReminderPortal from './ReminderPortal';
@@ -91,6 +96,7 @@ interface Notification {
     createdAt?: string;
     action?: string;
     cancelledReservations?: boolean;
+    daysBeforeEnd?: number;
   };
   createdAt: string;
 }
@@ -139,13 +145,23 @@ export default function Notifications({
   const { t } = useLanguage();
   const { addToast } = useToast();
 
+  // Helper function to check if user is admin (not sousAdmin)
+  const isAdmin = () => {
+    const adminUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const result = adminUser?.role === 'admin';
+    return result;
+  };
+
   // View state - either 'reminders' or 'notifications'
-  const [currentView, setCurrentView] = useState<'reminders' | 'notifications'>('reminders');
+  const [currentView, setCurrentView] = useState<'reminders' | 'notifications'>(isAdmin() ? 'reminders' : 'notifications');
   
   // Reminder modals state
   const [showBeforeEndModal, setShowBeforeEndModal] = useState(false);
   const [showSpecificTimeModal, setShowSpecificTimeModal] = useState(false);
+  const [showReservationSelectionModal, setShowReservationSelectionModal] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<any>(null);
+  const [selectedProperty, setSelectedProperty] = useState<any>(null);
+  const [reminderType, setReminderType] = useState<'before_end' | 'specific_time'>('before_end');
   const [reminders, setReminders] = useState<{ [key: string]: any[] }>({});
   const [loadingReminders, setLoadingReminders] = useState(false);
   const [initialFetchDone, setInitialFetchDone] = useState(false);
@@ -453,9 +469,9 @@ export default function Notifications({
     return true;
   });
 
-  // Get reservation details for each reserved property
-  const getPropertyReservation = (propertyId: string) => {
-    return reservations.find(reservation => {
+  // Get all reservation details for each reserved property
+  const getPropertyReservations = (propertyId: string) => {
+    return reservations.filter(reservation => {
       const reservationPropertyId = typeof reservation.propertyId === 'string' 
         ? reservation.propertyId 
         : reservation.propertyId?._id;
@@ -465,14 +481,28 @@ export default function Notifications({
   };
 
   // Handle opening reminder modals
-  const handleOpenBeforeEndModal = (reservation: any) => {
-    setSelectedReservation(reservation);
-    setShowBeforeEndModal(true);
+  const handleOpenBeforeEndModal = (property: any) => {
+    setSelectedProperty(property);
+    setReminderType('before_end');
+    setShowReservationSelectionModal(true);
   };
 
-  const handleOpenSpecificTimeModal = (reservation: any) => {
+  const handleOpenSpecificTimeModal = (property: any) => {
+    setSelectedProperty(property);
+    setReminderType('specific_time');
+    setShowReservationSelectionModal(true);
+  };
+
+  // Handle reservation selection
+  const handleReservationSelect = (reservation: any) => {
     setSelectedReservation(reservation);
-    setShowSpecificTimeModal(true);
+    setShowReservationSelectionModal(false);
+    
+    if (reminderType === 'before_end') {
+      setShowBeforeEndModal(true);
+    } else {
+      setShowSpecificTimeModal(true);
+    }
   };
 
   // Handle reminder created
@@ -624,6 +654,66 @@ export default function Notifications({
     }
   };
 
+  // Get notification type icon
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return <Bell className="w-5 h-5" />;
+      case 'reservation':
+        return <Calendar className="w-5 h-5" />;
+      case 'order':
+        return <ShoppingBag className="w-5 h-5" />;
+      case 'system':
+        return <Settings className="w-5 h-5" />;
+      case 'alert':
+        return <AlertTriangle className="w-5 h-5" />;
+      case 'property':
+        return <Home className="w-5 h-5" />;
+      default:
+        return <Info className="w-5 h-5" />;
+    }
+  };
+
+  // Get notification type color and background
+  const getNotificationTypeStyle = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+      case 'reservation':
+        return 'bg-green-500/20 text-green-300 border-green-500/30';
+      case 'order':
+        return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+      case 'system':
+        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+      case 'alert':
+        return 'bg-red-500/20 text-red-300 border-red-500/30';
+      case 'property':
+        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+      default:
+        return 'bg-white/20 text-white/80 border-white/30';
+    }
+  };
+
+  // Get notification type label in Arabic
+  const getNotificationTypeLabel = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'تذكير';
+      case 'reservation':
+        return 'حجز';
+      case 'order':
+        return 'طلب';
+      case 'system':
+        return 'نظام';
+      case 'alert':
+        return 'تنبيه';
+      case 'property':
+        return 'عقار';
+      default:
+        return 'عام';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -644,17 +734,19 @@ export default function Notifications({
           
           {/* View Toggle Buttons */}
           <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
-            <button
-              onClick={() => setCurrentView('reminders')}
-              className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:font-medium transition-all ${
-                currentView === 'reminders'
-                  ? 'bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 border-white/60 border-2 text-white shadow-lg'
-                  : 'bg-white/20 text-white hover:bg-white/30'
-              }`}
-            >
-              <span className="hidden sm:inline">عرض جميع التذكيرات</span>
-              <span className="sm:hidden">التذكيرات</span>
-            </button>
+            {isAdmin() && (
+              <button
+                onClick={() => setCurrentView('reminders')}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-sm sm:font-medium transition-all ${
+                  currentView === 'reminders'
+                    ? 'bg-gradient-to-br from-[#24697f] via-[#2a7f9a] to-teal-600 border-white/60 border-2 text-white shadow-lg'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                <span className="hidden sm:inline">عرض جميع التذكيرات</span>
+                <span className="sm:hidden">التذكيرات</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 setCurrentView('notifications');
@@ -691,10 +783,25 @@ export default function Notifications({
             </button>
           </div>
         </div>
+        
+        {/* Notification Types Legend */}
+        {currentView === 'notifications' && (
+          <div className="mt-4 pt-4 border-t border-white/20">
+            <p className="text-white/70 text-sm mb-2">أنواع الإشعارات:</p>
+            <div className="flex flex-wrap gap-2">
+              {['reminder', 'reservation', 'order', 'system', 'alert', 'property'].map((type) => (
+                <div key={type} className={`flex items-center gap-1 px-2 py-1 rounded-lg border ${getNotificationTypeStyle(type)}`}>
+                  {getNotificationIcon(type)}
+                  <span className="text-xs font-medium">{getNotificationTypeLabel(type)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Content Based on Current View */}
-      {currentView === 'reminders' ? (
+      {currentView === 'reminders' && isAdmin() ? (
         <div className="space-y-6">
           {/* Wilayas Filter */}
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
@@ -794,7 +901,7 @@ export default function Notifications({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
             {filteredReservedProperties.map((property) => {
-              const reservation = getPropertyReservation(property._id);
+              const propertyReservations = getPropertyReservations(property._id);
               
               return (
                 <div 
@@ -814,22 +921,21 @@ export default function Notifications({
                   
                   {/* Property Content */}
                   <div className="p-4">
-                    {/* Property Title and Status */}
+                    {/* Property Title and Reservation Count */}
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="text-lg font-semibold text-white">
                         {property.title}
                       </h3>
-                      {reservation && (
-                        <div className={`flex items-center space-x-2 space-x-reverse px-2 py-1 rounded-full border ${getStatusColor(reservation.status)}`}>
-                          {getStatusIcon(reservation.status)}
-                          <span className="text-xs font-medium">
-                            {reservation.status === 'pending' && 'في الانتظار'}
-                            {reservation.status === 'confirmed' && 'مؤكد'}
-                            {reservation.status === 'cancelled' && 'ملغي'}
-                            {reservation.status === 'completed' && 'مكتمل'}
-                          </span>
-                        </div>
-                      )}
+                      <div className={`flex items-center space-x-2 space-x-reverse px-2 py-1 rounded-full border ${
+                        propertyReservations.length > 0 
+                          ? 'text-green-600 bg-green-100 border-green-200' 
+                          : 'text-gray-600 bg-gray-100 border-gray-200'
+                      }`}>
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-xs font-medium">
+                          {propertyReservations.length} حجز
+                        </span>
+                      </div>
                     </div>
 
                     {/* Property Info */}
@@ -848,52 +954,115 @@ export default function Notifications({
                       </div>
                     </div>
 
-                    {/* Reservation Details */}
-                    {reservation && (
-                      <div className="border-t border-white/10 pt-3 mt-3 space-y-2">
-                        {/* Customer Info */}
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">العميل:</span>
-                          <span className="text-white font-medium">
-                            {reservation.customerName}
-                          </span>
-                        </div>
+                    {/* Reservations List */}
+                    {propertyReservations.length > 0 && (
+                      <div className="border-t border-white/10 pt-3 mt-3 space-y-3">
+                        <h4 className="text-sm font-medium text-white mb-2">قائمة الحجوزات:</h4>
+                        {propertyReservations.map((reservation, index) => (
+                          <div key={reservation._id} className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                            {/* Reservation Header */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-white">حجز #{index + 1}</span>
+                              <div className={`flex items-center space-x-2 space-x-reverse px-2 py-1 rounded-full border ${getStatusColor(reservation.status)}`}>
+                                {getStatusIcon(reservation.status)}
+                                <span className="text-xs font-medium">
+                                  {reservation.status === 'pending' && 'في الانتظار'}
+                                  {reservation.status === 'confirmed' && 'مؤكد'}
+                                  {reservation.status === 'cancelled' && 'ملغي'}
+                                  {reservation.status === 'completed' && 'مكتمل'}
+                                </span>
+                              </div>
+                            </div>
 
-                        {/* Phone */}
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">الهاتف:</span>
-                          <span className="text-white font-medium">
-                            {reservation.customerPhone}
-                          </span>
-                        </div>
+                            {/* Customer Info */}
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-400">العميل:</span>
+                              <span className="text-white font-medium">
+                                {reservation.customerName}
+                              </span>
+                            </div>
 
-                        {/* Dates */}
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">الفترة:</span>
-                          <span className="text-white text-xs">
-                            {formatDate(reservation.startDate)} - {formatDate(reservation.endDate)}
-                          </span>
-                        </div>
+                            {/* Phone */}
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-400">الهاتف:</span>
+                              <span className="text-white font-medium">
+                                {reservation.customerPhone}
+                              </span>
+                            </div>
 
-                        {/* Payment Status */}
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">الدفع:</span>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${getPaymentStatusColor(reservation.paymentStatus)}`}>
-                            {reservation.paymentStatus === 'pending' && 'في الانتظار'}
-                            {reservation.paymentStatus === 'partial' && 'مدفوع جزئياً'}
-                            {reservation.paymentStatus === 'paid' && 'مدفوع بالكامل'}
-                          </span>
-                        </div>
+                            {/* Dates */}
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-400">الفترة:</span>
+                              <span className="text-white text-xs">
+                                {formatDate(reservation.startDate)} - {formatDate(reservation.endDate)}
+                              </span>
+                            </div>
 
-                        {/* Remaining Amount */}
-                        {reservation.remainingAmount > 0 && (
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-400">المتبقي:</span>
-                            <span className="text-orange-300 font-medium">
-                              {reservation.remainingAmount} دج
-                            </span>
+                            {/* Payment Status */}
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-400">الدفع:</span>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${getPaymentStatusColor(reservation.paymentStatus)}`}>
+                                {reservation.paymentStatus === 'pending' && 'في الانتظار'}
+                                {reservation.paymentStatus === 'partial' && 'مدفوع جزئياً'}
+                                {reservation.paymentStatus === 'paid' && 'مدفوع بالكامل'}
+                              </span>
+                            </div>
+
+                            {/* Remaining Amount */}
+                            {reservation.remainingAmount > 0 && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-400">المتبقي:</span>
+                                <span className="text-orange-300 font-medium">
+                                  {reservation.remainingAmount} دج
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Reminders for this reservation */}
+                            {reminders[reservation._id] && reminders[reservation._id].length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-white/10">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h5 className="text-xs font-medium text-white">التذكيرات:</h5>
+                                  <button
+                                    className="text-xs text-blue-300 hover:text-blue-200 transition-colors"
+                                    onClick={() => toggleReminders(reservation._id)}
+                                  >
+                                    {expandedReminders[reservation._id] ? 'إخفاء' : 'عرض'}
+                                  </button>
+                                </div>
+                                {expandedReminders[reservation._id] && (
+                                  <div className="space-y-1">
+                                    {reminders[reservation._id].map((reminder: any) => (
+                                      <div key={reminder._id} className="bg-white/5 border border-white/10 rounded p-2">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex-1">
+                                            <span className={`text-xs px-1 py-0.5 rounded-full ${
+                                              reminder.reminderType === 'before_end' 
+                                                ? 'bg-orange-500/20 text-orange-300' 
+                                                : 'bg-gray-500/20 text-gray-300'
+                                            }`}>
+                                              {reminder.reminderType === 'before_end' ? `قبل ${reminder.daysBeforeEnd} يوم` : 'وقت محدد'}
+                                            </span>
+                                            <p className="text-xs text-gray-300 mt-1">{reminder.message}</p>
+                                          </div>
+                                          {reminder.status === 'pending' && (
+                                            <button
+                                              onClick={() => handleDeleteReminder(reminder._id, reservation._id)}
+                                              className="text-red-400 hover:text-red-300 transition-colors mr-2"
+                                              title="حذف التذكير"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     )}
 
@@ -902,100 +1071,22 @@ export default function Notifications({
                       <button
                         className="flex-1 px-3 py-2 bg-gradient-to-br from-[#ff8844] to-[#cc6600] text-white rounded-lg hover:from-[#ff7733] hover:to-[#aa5500] transition-all text-sm font-medium cursor-pointer border-2 border-white/60"
                         onClick={() => {
-                          if (reservation) {
-                            handleOpenBeforeEndModal(reservation);
-                          }
+                          handleOpenBeforeEndModal(property);
                         }}
+                        disabled={propertyReservations.length === 0}
                       >
                         تذكير قبل نهاية الحجز بـ
                       </button>
                       <button
                         className="flex-1 px-3 py-2 bg-gradient-to-br from-[#888888] to-[#666666] text-white rounded-lg hover:from-[#777777] hover:to-[#555555] transition-all text-sm font-medium cursor-pointer border-2 border-white/60"
                         onClick={() => {
-                          if (reservation) {
-                            handleOpenSpecificTimeModal(reservation);
-                          }
+                          handleOpenSpecificTimeModal(property);
                         }}
+                        disabled={propertyReservations.length === 0}
                       >
                         تذكير في وقت معين
                       </button>
                     </div>
-
-                    {/* Reminders List */}
-                    {reservation && reminders[reservation._id] && reminders[reservation._id].length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-white/10">
-                        <h4 
-                          className="text-sm font-medium text-white mb-3 flex items-center cursor-pointer hover:text-white/80 transition-colors"
-                          onClick={() => toggleReminders(property._id)}
-                        >
-                          <Bell className="w-4 h-4 ml-2" />
-                          التذكيرات ({reminders[reservation._id].length})
-                          <span className="ml-auto text-xs">
-                            {expandedReminders[property._id] ? '▼' : '▶'}
-                          </span>
-                        </h4>
-                        {expandedReminders[property._id] && (
-                          <div className="space-y-2">
-                            {reminders[reservation._id].map((reminder: any) => (
-                            <div key={reminder._id} className="bg-white/5 border border-white/10 rounded-lg p-3">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center space-x-2 space-x-reverse mb-1">
-                                    <span className={`text-xs px-2 py-1 rounded-full ${
-                                      reminder.reminderType === 'before_end' 
-                                        ? 'bg-orange-500/20 text-orange-300' 
-                                        : 'bg-gray-500/20 text-gray-300'
-                                    }`}>
-                                      {reminder.reminderType === 'before_end' ? `قبل ${reminder.daysBeforeEnd} يوم` : 'وقت محدد'}
-                                    </span>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${
-                                      reminder.status === 'pending' 
-                                        ? 'bg-yellow-500/20 text-yellow-300' 
-                                        : 'bg-green-500/20 text-green-300'
-                                    }`}>
-                                      {reminder.status === 'pending' ? 'في الانتظار' : 'تم الإرسال'}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-gray-300 mb-1">{reminder.message}</p>
-                                  {reminder.reminderType === 'specific_time' && reminder.reminderDateTime && (
-                                    <p className="text-xs text-gray-400">
-                                      {(() => {
-                                        const reminderDate = new Date(reminder.reminderDateTime);
-                                        // Subtract 1 hour to convert from UTC to Africa/Algiers
-                                        reminderDate.setHours(reminderDate.getHours() - 1);
-                                        return reminderDate.toLocaleString('ar-DZ', {
-                                          year: 'numeric',
-                                          month: 'long',
-                                          day: 'numeric',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                          hour12: true
-                                        });
-                                      })()}
-                                    </p>
-                                  )}
-                                  {reminder.reminderType === 'before_end' && (
-                                    <p className="text-xs text-gray-400">
-                                      قبل {reminder.daysBeforeEnd} يوم من نهاية الحجز
-                                    </p>
-                                  )}
-                                </div>
-                                {reminder.status === 'pending' && (
-                                  <button
-                                    onClick={() => handleDeleteReminder(reminder._id, reservation._id)}
-                                    className="text-red-400 hover:text-red-300 transition-colors ml-2"
-                                    title="حذف التذكير"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -1021,48 +1112,80 @@ export default function Notifications({
           ) : (
             <div className="space-y-4">
               {notifications.map((notification) => (
-                <div key={notification._id} className="bg-white/10 rounded-xl p-4 border border-white/20">
+                <div key={notification._id} className={`bg-white/10 rounded-xl p-4 border border-white/20 ${getNotificationTypeStyle(notification.type)}`}>
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="text-white font-semibold text-lg mb-1">
-                        {notification.title}
-                      </h3>
-                      <p className="text-white/80 mb-2">{notification.message}</p>
-                      {notification.type === 'reservation' && (
-                        <p className="text-white/70 text-sm mb-2">
-                          تم الحجز بواسطة: <span className="text-white/90 font-medium">
-                            {notification.userId?.firstName && notification.userId?.lastName 
-                              ? `${notification.userId.firstName} ${notification.userId.lastName}`
-                              : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
-                            }
+                    <div className="flex items-start gap-3 flex-1">
+                      {/* Notification Type Icon */}
+                      <div className={`p-2 rounded-lg ${getNotificationTypeStyle(notification.type)}`}>
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-white font-semibold text-lg">
+                            {notification.title}
+                          </h3>
+                          {/* Type Badge */}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getNotificationTypeStyle(notification.type)}`}>
+                            {getNotificationTypeLabel(notification.type)}
                           </span>
-                        </p>
-                      )}
-                      {notification.type === 'property' && (
-                        <p className="text-white/70 text-sm mb-2">
-                          تم بواسطة: <span className="text-white/90 font-medium">
-                            {notification.userId?.firstName && notification.userId?.lastName 
-                              ? `${notification.userId.firstName} ${notification.userId.lastName}`
-                              : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
-                            }
-                          </span>
-                        </p>
-                      )}
-                      <div className="flex items-center gap-4 text-white/60 text-sm">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          <span>{formatDate(notification.createdAt)}</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Eye className="w-4 h-4" />
-                          <span>شوهد من قبل {(notification.seenBy || []).length} شخص</span>
+                        <p className="text-white/80 mb-2">{notification.message}</p>
+                        {notification.type === 'reservation' && (
+                          <p className="text-white/70 text-sm mb-2">
+                            تم الحجز بواسطة: <span className="text-white/90 font-medium">
+                              {notification.userId?.firstName && notification.userId?.lastName 
+                                ? `${notification.userId.firstName} ${notification.userId.lastName}`
+                                : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
+                              }
+                            </span>
+                          </p>
+                        )}
+                        {notification.type === 'property' && (
+                          <p className="text-white/70 text-sm mb-2">
+                            تم بواسطة: <span className="text-white/90 font-medium">
+                              {notification.userId?.firstName && notification.userId?.lastName 
+                                ? `${notification.userId.firstName} ${notification.userId.lastName}`
+                                : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
+                              }
+                            </span>
+                          </p>
+                        )}
+                        {notification.type === 'order' && (
+                          <p className="text-white/70 text-sm mb-2">
+                            طلب رقم: <span className="text-white/90 font-medium">
+                              {notification.metadata?.orderId || notification.orderId || 'غير محدد'}
+                            </span>
+                          </p>
+                        )}
+                        {notification.type === 'reminder' && (
+                          <p className="text-white/70 text-sm mb-2">
+                            نوع التذكير: <span className="text-white/90 font-medium">
+                              {notification.metadata?.reminderType === 'before_end' 
+                                ? `قبل ${notification.metadata?.daysBeforeEnd || 0} يوم من نهاية الحجز`
+                                : notification.metadata?.reminderType === 'specific_time'
+                                ? `في وقت محدد: ${notification.metadata?.reminderDateTime ? new Date(notification.metadata.reminderDateTime).toLocaleString('ar-DZ') : 'غير محدد'}`
+                                : 'تذكير عام'
+                              }
+                            </span>
+                          </p>
+                        )}
+                        <div className="flex items-center gap-4 text-white/60 text-sm">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            <span>{formatDate(notification.createdAt)}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            <span>شوهد من قبل {(notification.seenBy || []).length} شخص</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium border ${
                       notification.read 
-                        ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                        : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                        ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
                     }`}>
                       {notification.read ? 'مقروء' : 'غير مقروء'}
                     </div>
@@ -1104,6 +1227,96 @@ export default function Notifications({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Reservation Selection Modal */}
+      {showReservationSelectionModal && selectedProperty && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-800">
+                  {reminderType === 'before_end' ? 'تذكير قبل نهاية الحجز' : 'تذكير في وقت معين'}
+                </h3>
+                <button
+                  onClick={() => setShowReservationSelectionModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Property Info */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h4 className="font-semibold text-gray-800 mb-2">{selectedProperty.title}</h4>
+                <p className="text-sm text-gray-600">{selectedProperty.location}</p>
+                <p className="text-sm text-blue-600 font-medium">{selectedProperty.pricePerDay} دج/يوم</p>
+              </div>
+
+              {/* Reservations List */}
+              <div className="space-y-3">
+                <h4 className="font-semibold text-gray-800 mb-3">اختر الحجز:</h4>
+                {getPropertyReservations(selectedProperty._id).map((reservation, index) => (
+                  <div
+                    key={reservation._id}
+                    className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => handleReservationSelect(reservation)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-800">حجز #{index + 1}</span>
+                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(reservation.status)}`}>
+                        {reservation.status === 'pending' && 'في الانتظار'}
+                        {reservation.status === 'confirmed' && 'مؤكد'}
+                        {reservation.status === 'cancelled' && 'ملغي'}
+                        {reservation.status === 'completed' && 'مكتمل'}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <span className="text-gray-500">العميل:</span>
+                        <span className="text-gray-800 font-medium mr-2">{reservation.customerName}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">الهاتف:</span>
+                        <span className="text-gray-800 font-medium mr-2">{reservation.customerPhone}</span>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-500">الفترة:</span>
+                        <span className="text-gray-800 text-xs mr-2">
+                          {formatDate(reservation.startDate)} - {formatDate(reservation.endDate)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">الدفع:</span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${getPaymentStatusColor(reservation.paymentStatus)}`}>
+                          {reservation.paymentStatus === 'pending' && 'في الانتظار'}
+                          {reservation.paymentStatus === 'partial' && 'مدفوع جزئياً'}
+                          {reservation.paymentStatus === 'paid' && 'مدفوع بالكامل'}
+                        </span>
+                      </div>
+                      {reservation.remainingAmount > 0 && (
+                        <div>
+                          <span className="text-gray-500">المتبقي:</span>
+                          <span className="text-orange-600 font-medium mr-2">{reservation.remainingAmount} دج</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* No Reservations Message */}
+              {getPropertyReservations(selectedProperty._id).length === 0 && (
+                <div className="text-center py-8">
+                  <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">لا توجد حجوزات نشطة لهذا العقار</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

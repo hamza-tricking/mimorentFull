@@ -51,6 +51,8 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
 }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
+  const [showFullScreenImage, setShowFullScreenImage] = useState(false);
+  const [fullScreenImageIndex, setFullScreenImageIndex] = useState(0);
 
   if (!isOpen || !property) return null;
 
@@ -62,6 +64,23 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
 
   const handleNextImage = () => {
     setCurrentImageIndex((prev) => 
+      prev === (property.images?.length || 1) - 1 ? 0 : prev + 1
+    );
+  };
+
+  const handleImageClick = (index: number) => {
+    setFullScreenImageIndex(index);
+    setShowFullScreenImage(true);
+  };
+
+  const handleFullScreenPrevious = () => {
+    setFullScreenImageIndex((prev) => 
+      prev === 0 ? (property.images?.length || 1) - 1 : prev - 1
+    );
+  };
+
+  const handleFullScreenNext = () => {
+    setFullScreenImageIndex((prev) => 
       prev === (property.images?.length || 1) - 1 ? 0 : prev + 1
     );
   };
@@ -161,15 +180,16 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
             {/* Images Section */}
             <div className="space-y-4">
               {/* Main Image */}
-              <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 shadow-xl">
+              <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 shadow-xl cursor-pointer group">
                 {property.images && property.images.length > 0 ? (
                   <img
                     src={property.images[currentImageIndex]}
-                    alt={`${property.title} - صورة ${currentImageIndex + 1}`}
-                    className="w-full h-full object-cover"
+                    alt={`${property.title} - image ${currentImageIndex + 1}`}
+                    className="w-full h-auto object-contain max-h-[600px] transition-transform duration-300 group-hover:scale-105"
+                    onClick={() => handleImageClick(currentImageIndex)}
                   />
                 ) : (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="flex items-center justify-center h-96">
                     <Home className="w-24 h-24 text-gray-300" />
                   </div>
                 )}
@@ -297,11 +317,11 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
                     {property.officeId.phone && (
                       <a
                         href={`tel:${property.officeId.phone}`}
-                        className="flex items-center justify-center text-green-700 bg-white/60 rounded-xl p-4 backdrop-blur-sm border border-white/50 hover:bg-green-50/80 transition-all duration-300 hover:scale-105"
+                        className="flex items-center justify-center text-green-700 bg-gradient-to-r from-green-50/80 to-emerald-50/80 rounded-xl p-4 backdrop-blur-sm border border-green-200/50 hover:from-green-100/80 hover:to-emerald-100/80 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
                       >
-                        <Phone className="w-5 h-5 mr-3 text-green-600" />
+                        <Phone className="w-6 h-6 mr-3 text-green-600" />
                         <div className="text-center">
-                          <div className="font-bold text-lg">{property.officeId.phone}</div>
+                          <div className="font-bold text-lg text-green-800">{property.officeId.phone}</div>
                           <div className="text-sm text-green-600 font-medium">اتصل مباشرة</div>
                         </div>
                       </a>
@@ -503,6 +523,86 @@ const PropertyPreviewModal: React.FC<PropertyPreviewModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Full Screen Image Preview Modal */}
+      {showFullScreenImage && (
+        <div 
+          className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[100] p-4"
+          onClick={() => setShowFullScreenImage(false)}
+        >
+          <div 
+            className="relative w-full h-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowFullScreenImage(false)}
+              className="absolute top-4 right-4 p-3 bg-white/20 hover:bg-white/30 rounded-full transition-all duration-200 hover:scale-110 z-10"
+            >
+              <X className="w-6 h-6 text-white" />
+            </button>
+
+            {/* Image Counter */}
+            {property.images && property.images.length > 1 && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg z-10">
+                {fullScreenImageIndex + 1} / {property.images.length}
+              </div>
+            )}
+
+            {/* Main Full Screen Image */}
+            <div className="relative max-w-full max-h-full">
+              {property.images && property.images.length > 0 && (
+                <img
+                  src={property.images[fullScreenImageIndex]}
+                  alt={`${property.title} - Full screen image ${fullScreenImageIndex + 1}`}
+                  className="max-w-full max-h-full object-contain"
+                />
+              )}
+            </div>
+
+            {/* Navigation Buttons */}
+            {property.images && property.images.length > 1 && (
+              <>
+                <button
+                  onClick={handleFullScreenPrevious}
+                  className="absolute right-8 top-1/2 -translate-y-1/2 p-4 bg-white/20 hover:bg-white/30 rounded-full shadow-xl transition-all duration-300 hover:scale-110 backdrop-blur-sm"
+                >
+                  <ArrowRight className="w-6 h-6 text-white" />
+                </button>
+                <button
+                  onClick={handleFullScreenNext}
+                  className="absolute left-8 top-1/2 -translate-y-1/2 p-4 bg-white/20 hover:bg-white/30 rounded-full shadow-xl transition-all duration-300 hover:scale-110 backdrop-blur-sm"
+                >
+                  <ArrowLeft className="w-6 h-6 text-white" />
+                </button>
+              </>
+            )}
+
+            {/* Thumbnail Strip */}
+            {property.images && property.images.length > 1 && (
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 backdrop-blur-sm p-2 rounded-full">
+                {property.images.map((image, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setFullScreenImageIndex(index)}
+                    className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all duration-300 hover:scale-110 ${
+                      index === fullScreenImageIndex 
+                        ? 'border-white shadow-lg scale-110' 
+                        : 'border-gray-400 hover:border-gray-300'
+                    }`}
+                  >
+                    <img
+                      src={image}
+                      alt={`Thumbnail ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

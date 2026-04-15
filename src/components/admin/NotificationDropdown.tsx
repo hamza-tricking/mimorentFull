@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, X, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Bell, X, Clock, CheckCircle, AlertCircle, RefreshCw, Calendar, ShoppingBag, Settings, AlertTriangle, Home, Info } from 'lucide-react';
 import LoadingSpinner from '../LoadingSpinner';
 
 interface Notification {
@@ -45,6 +45,7 @@ interface Notification {
     createdAt?: string;
     action?: string;
     cancelledReservations?: boolean;
+    daysBeforeEnd?: number;
   };
   createdAt: string;
 }
@@ -478,6 +479,66 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
     return `منذ ${Math.floor(diffInMinutes / 1440)} يوم`;
   };
 
+  // Get notification type icon
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return <Bell className="w-4 h-4" />;
+      case 'reservation':
+        return <Calendar className="w-4 h-4" />;
+      case 'order':
+        return <ShoppingBag className="w-4 h-4" />;
+      case 'system':
+        return <Settings className="w-4 h-4" />;
+      case 'alert':
+        return <AlertTriangle className="w-4 h-4" />;
+      case 'property':
+        return <Home className="w-4 h-4" />;
+      default:
+        return <Info className="w-4 h-4" />;
+    }
+  };
+
+  // Get notification type color and background
+  const getNotificationTypeStyle = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'bg-blue-100 text-blue-600 border-blue-200';
+      case 'reservation':
+        return 'bg-green-100 text-green-600 border-green-200';
+      case 'order':
+        return 'bg-purple-100 text-purple-600 border-purple-200';
+      case 'system':
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+      case 'alert':
+        return 'bg-red-100 text-red-600 border-red-200';
+      case 'property':
+        return 'bg-orange-100 text-orange-600 border-orange-200';
+      default:
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  };
+
+  // Get notification type label in Arabic
+  const getNotificationTypeLabel = (type: string) => {
+    switch (type) {
+      case 'reminder':
+        return 'تذكير';
+      case 'reservation':
+        return 'حجز';
+      case 'order':
+        return 'طلب';
+      case 'system':
+        return 'نظام';
+      case 'alert':
+        return 'تنبيه';
+      case 'property':
+        return 'عقار';
+      default:
+        return 'عام';
+    }
+  };
+
   return (
     <>
       {/* Bell Button */}
@@ -632,46 +693,72 @@ export default function NotificationDropdown({ className = '' }: NotificationDro
                     }}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className={`w-2 h-2 rounded-full ${
-                            !notification.read ? 'bg-blue-600' : 'bg-gray-300'
-                          }`}></div>
-                          <h4 className="font-semibold text-gray-900 text-sm">
-                            {notification.title}
-                          </h4>
+                      <div className="flex items-start gap-3 flex-1">
+                        {/* Notification Type Icon */}
+                        <div className={`p-2 rounded-lg border ${getNotificationTypeStyle(notification.type)}`}>
+                          {getNotificationIcon(notification.type)}
                         </div>
-                        <p className="text-gray-700 text-sm mb-2">
-                          <span className="font-medium">الرسالة: </span>
-                          {notification.message}
-                        </p>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {formatDate(notification.createdAt)}
-                          </span>
-                          <span>العميل: {notification.metadata.customerName}</span>
-                          {notification.type === 'reservation' && (
-                            <span>
-                              تم الحجز بواسطة: {
-                                notification.userId?.firstName && notification.userId?.lastName 
-                                  ? `${notification.userId.firstName} ${notification.userId.lastName}`
-                                  : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
-                              }
+                        
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className={`w-2 h-2 rounded-full ${
+                              !notification.read ? 'bg-blue-600' : 'bg-gray-300'
+                            }`}></div>
+                            <h4 className="font-semibold text-gray-900 text-sm">
+                              {notification.title}
+                            </h4>
+                            {/* Type Badge */}
+                            <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium border ${getNotificationTypeStyle(notification.type)}`}>
+                              {getNotificationTypeLabel(notification.type)}
                             </span>
-                          )}
-                          {notification.type === 'property' && (
-                            <span>
-                              تم بواسطة: {
-                                notification.userId?.firstName && notification.userId?.lastName 
-                                  ? `${notification.userId.firstName} ${notification.userId.lastName}`
-                                  : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
-                              }
+                          </div>
+                          <p className="text-gray-700 text-sm mb-2">
+                            <span className="font-medium">الرسالة: </span>
+                            {notification.message}
+                          </p>
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatDate(notification.createdAt)}
                             </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          العقار: {notification.metadata.propertyTitle}
+                            <span>العميل: {notification.metadata.customerName}</span>
+                            {notification.type === 'reservation' && (
+                              <span>
+                                تم الحجز بواسطة: {
+                                  notification.userId?.firstName && notification.userId?.lastName 
+                                    ? `${notification.userId.firstName} ${notification.userId.lastName}`
+                                    : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
+                                }
+                              </span>
+                            )}
+                            {notification.type === 'property' && (
+                              <span>
+                                تم بواسطة: {
+                                  notification.userId?.firstName && notification.userId?.lastName 
+                                    ? `${notification.userId.firstName} ${notification.userId.lastName}`
+                                    : notification.userId?.username || notification.userId?.name || notification.metadata?.createdByName || 'System'
+                                }
+                              </span>
+                            )}
+                            {notification.type === 'order' && (
+                              <span>
+                                طلب رقم: {notification.metadata?.orderId || notification.orderId || 'غير محدد'}
+                              </span>
+                            )}
+                            {notification.type === 'reminder' && (
+                              <span>
+                                {notification.metadata?.reminderType === 'before_end' 
+                                  ? `قبل ${notification.metadata?.daysBeforeEnd || 0} يوم`
+                                  : notification.metadata?.reminderType === 'specific_time'
+                                  ? 'وقت محدد'
+                                  : 'تذكير عام'
+                                }
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            العقار: {notification.metadata.propertyTitle}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1 ml-2">
